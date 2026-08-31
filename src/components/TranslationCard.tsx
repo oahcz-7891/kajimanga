@@ -10,14 +10,10 @@ interface Props {
 }
 
 export default function TranslationCard({ result, onClose, leaving, onAnimationEnd }: Props) {
-  // 水平居中由 CSS（left:50% + translateX(-50%)）实现；这里只控制垂直位置（中线附近，超高时钳制回屏内）
-  const top = Math.min(Math.max(12, (window.innerHeight - 300) / 2), window.innerHeight - 300)
-
   return (
     <div
       className={`result-card${leaving ? ' leaving' : ''}`}
       onAnimationEnd={onAnimationEnd}
-      style={{ top }}
     >      <div className="result-head">
         <span className="badge">译文</span>
         <button className="close-btn" onClick={onClose} title="关闭">
