@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设置预览</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-subtle: #f6f8fa;
+    --border: #d0d7de;
+    --border-muted: #d8dee4;
+    --fg: #1f2328;
+    --fg-muted: #656d76;
+    --accent: #0969da;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; background: #eef1f4; display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; }
+  .phone {
+    width: 390px;
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.18);
+    overflow: hidden;
+  }
+  /* 顶部导航栏 */
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .head .back { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; font-size: 13px; color: var(--fg); background: var(--bg-subtle); border: 1px solid var(--border-muted); border-radius: var(--radius); }
+  .head .save { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); padding: 5px 14px; font-size: 13px; font-weight: 500; color: #fff; background: #000; border: 1px solid #000; border-radius: var(--radius); }
+  .head .title { font-size: 15px; font-weight: 600; color: var(--fg); }
+  .body { padding: 16px 18px 28px; }
+  /* 分区标题 */
+  .section { padding: 8px 0; }
+  .section-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 12px; }
+  /* 灰线分隔 */
+  .divider { height: 1px; background: var(--border); margin: 6px 0 10px; }
+  /* 字段 */
+  .field { margin-bottom: 14px; }
+  .label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--fg); }
+  .input { width: 100%; padding: 6px 10px; font-size: 14px; color: var(--fg); background: var(--bg); border: 1px solid var(--border-muted); border-radius: var(--radius); }
+  .select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='%23656d76'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%23656d76' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+  .key-field { display: flex; gap: 8px; }
+  .key-field .input { flex: 1; }
+  .key-eye { width: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--fg-muted); background: var(--bg); border: 1px solid var(--border-muted); border-radius: var(--radius); font-size: 14px; }
+  .hint { margin-top: 6px; font-size: 12px; color: var(--fg-muted); }
+  /* 行式字段（开关那一排） */
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-muted); }
+  .row-label { font-size: 14px; color: var(--fg); }
+  .row-hint { display: block; margin-top: 2px; font-size: 12px; color: var(--fg-muted); }
+  .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+  .switch-slider { position: absolute; inset: 0; border-radius: 24px; background: #111; }
+  .switch-slider::before { content: ''; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .actions { display: flex; gap: 8px; }
+  .btn-ghost { padding: 5px 12px; font-size: 13px; color: var(--fg); background: var(--bg-subtle); border: 1px solid var(--border-muted); border-radius: var(--radius); }
+  .btn-danger { padding: 5px 12px; font-size: 13px; color: var(--danger, #cf222e); background: #fff; border: 1px solid rgba(207, 34, 46, 0.3); border-radius: var(--radius); }
+  .test-msg { font-size: 12px; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="head">
+      <button class="back">‹ 返回</button>
+      <span class="title">设置</span>
+      <button class="save">保存</button>
+    </div>
+    <div class="body">
+      <div class="section">
+        <div class="section-title">API 设置</div>
+        <div class="field">
+          <label class="label">服务商</label>
+          <select class="input select"><option>DeepSeek</option><option>Qwen</option><option>Kimi</option><option>自定义 / 其它</option></select>
+        </div>
+        <div class="field">
+          <label class="label">模型名</label>
+          <input class="input" placeholder="填写模型名" />
+        </div>
+        <div class="field">
+          <label class="label">思考强度</label>
+          <select class="input select"><option>关闭</option><option>低</option><option>中</option><option>高</option></select>
+        </div>
+        <div class="field">
+          <label class="label">API Base URL</label>
+          <input class="input" placeholder="https://.../v1" />
+        </div>
+        <div class="field">
+          <label class="label">API Key</label>
+          <div class="key-field">
+            <input class="input" type="password" placeholder="sk-..." />
+            <span class="key-eye">👁</span>
+          </div>
+          <div class="hint">Key 仅保存在本机浏览器 localStorage，请勿公开部署。</div>
+        </div>
+        <div class="field actions">
+          <button class="btn-ghost">测试连接</button>
+        </div>
+        <div class="field actions">
+          <button class="btn-danger">重置当前供应商</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section">
+        <div class="section-title">阅读与翻译</div>
+        <div class="row">
+          <div><span class="row-label">双击缩放</span><span class="row-hint">阅读页双击图片放大 / 缩小，放大后可拖动</span></div>
+          <span class="switch"><span class="switch-slider"></span></span>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label class="label">双击缩放比例</label>
+          <select class="input select"><option>2 倍</option><option>1.5 倍</option><option>2.5 倍</option><option>3 倍</option></select>
+        </div>
+        <div class="field">
+          <label class="label">模式</label>
+          <select class="input select"><option>翻译模式</option><option>学习模式</option></select>
+          <div class="hint">学习模式会在译文外额外解释语法和单词。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
