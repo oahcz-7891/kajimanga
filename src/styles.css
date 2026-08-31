@@ -350,7 +350,7 @@ button {
   transition: transform 0.3s ease;
 }
 
-/* ---------- 翻页动画（推页式：与阅读层 push/pop 相同的滑动感） ---------- */
+/* ---------- 翻页动画（推页式 transition 两帧法：不重建元素，先瞬移到屏幕外再过渡滑入） ---------- */
 .turn-new-wrap {
   position: relative;
   z-index: 1;
@@ -375,66 +375,37 @@ button {
   user-select: none;
 }
 
-/* 下一页：旧页向左滑出，新页从右滑入 */
-@keyframes turn-out-next {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-100%);
-  }
+/* 下一页：新页从右滑入、旧页向左滑出；上一页反向 */
+.turn-new-wrap.turn-start-next {
+  transform: translateX(100%);
 }
 
-@keyframes turn-in-next {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+.turn-new-wrap.turn-start-prev {
+  transform: translateX(-100%);
 }
 
-/* 上一页：旧页向右滑出，新页从左滑入 */
-@keyframes turn-out-prev {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes turn-in-prev {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+.turn-new-wrap.turn-enter-next,
+.turn-new-wrap.turn-enter-prev {
+  transform: translateX(0);
+  transition: transform 0.75s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .turn-old-wrap.turn-exit-next {
-  animation: turn-out-next 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+  transform: translateX(-100%);
+  transition: transform 0.75s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .turn-old-wrap.turn-exit-prev {
-  animation: turn-out-prev 0.45s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.turn-new-wrap.turn-enter-next {
-  animation: turn-in-next 0.45s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.turn-new-wrap.turn-enter-prev {
-  animation: turn-in-prev 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+  transform: translateX(100%);
+  transition: transform 0.75s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turn-old-wrap.turn-exit-next,
-  .turn-old-wrap.turn-exit-prev,
   .turn-new-wrap.turn-enter-next,
-  .turn-new-wrap.turn-enter-prev {
-    animation: none;
+  .turn-new-wrap.turn-enter-prev,
+  .turn-old-wrap.turn-exit-next,
+  .turn-old-wrap.turn-exit-prev {
+    transition: none;
   }
 }
 
@@ -533,14 +504,70 @@ button {
 /* ---------- 译文卡片 ---------- */
 .result-card {
   position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 20;
-  max-width: 460px;
-  padding: 14px 16px;
-  line-height: 1.5;
-  background: var(--bg);
-  border: 1px solid var(--border-muted);
-  border-radius: 10px;
-  box-shadow: 0 2px 12px rgba(140, 149, 159, 0.2);
+  max-width: 680px;
+  padding: 22px 26px;
+  line-height: 1.55;
+  /* iOS 26 Liquid Glass：毛玻璃半透明 */
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(31, 35, 40, 0.14);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* 弹性弹簧弹入（多帧：过头 → 回弹 → 回正） */
+.result-card {
+  animation: result-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.result-card.leaving {
+  animation: result-card-out 0.32s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+@keyframes result-card-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -36px) scale(0.92);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, 7px) scale(1.03);
+  }
+  78% {
+    transform: translate(-50%, -3px) scale(0.985);
+  }
+  90% {
+    transform: translate(-50%, 1px) scale(1.008);
+  }
+  100% {
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* 消失：先轻微下压（张力）再向上淡出 */
+@keyframes result-card-out {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  35% {
+    transform: translate(-50%, 5px) scale(1.015);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-card,
+  .result-card.leaving {
+    animation: none;
+  }
 }
 
 .result-head {
@@ -548,23 +575,23 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-muted);
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 .badge {
   display: inline-block;
   align-self: flex-start;
   flex-shrink: 0;
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: 6px 14px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: nowrap;
   color: #fff;
   background: #000;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 /* 译文卡片头部：徽章与关闭按钮同一行居中 */
@@ -574,14 +601,14 @@ button {
 
 /* 日语 / 中文纯文本 */
 .result-orig {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--fg-muted);
-  margin-bottom: 6px;
+  margin-bottom: 9px;
   word-break: break-word;
 }
 
 .result-trans {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--fg);
   font-weight: 500;
   word-break: break-word;
@@ -628,15 +655,15 @@ button {
 .close-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  font-size: 12px;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   color: #fff;
   background: #000;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: 0.12s ease;
 }
@@ -651,15 +678,82 @@ button {
   top: 16px;
   z-index: 20;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  background: var(--bg);
-  border: 1px solid var(--border-muted);
-  border-radius: 10px;
-  box-shadow: 0 2px 12px rgba(140, 149, 159, 0.2);
+  padding: 14px 16px;
+  line-height: 1.5;
+  width: 460px;
   max-width: calc(100vw - 48px);
+  /* iOS 26 Liquid Glass：毛玻璃半透明 */
+  background: rgba(248, 249, 250, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(31, 35, 40, 0.14);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* 错误卡片头部：徽章与关闭按钮同一行（与译文卡片 result-head 一致） */
+.trans-error-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.trans-error-head .badge {
+  align-self: center;
+}
+
+/* 弹出 / 关闭动画：iOS 26 Liquid Glass 风格（毛玻璃 + 弹性弹簧滑入滑出） */
+.trans-error {
+  animation: trans-error-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.trans-error.leaving {
+  animation: trans-error-out 0.32s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+@keyframes trans-error-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -36px) scale(0.92);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, 7px) scale(1.03);
+  }
+  78% {
+    transform: translate(-50%, -3px) scale(0.985);
+  }
+  90% {
+    transform: translate(-50%, 1px) scale(1.008);
+  }
+  100% {
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes trans-error-out {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  35% {
+    transform: translate(-50%, 5px) scale(1.015);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trans-error,
+  .trans-error.leaving {
+    animation: none;
+  }
 }
 
 .trans-error-msg {

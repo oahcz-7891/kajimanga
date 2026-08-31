@@ -24,6 +24,7 @@ interface MangaViewerProps {
   onDelete: (id: string) => void
   onCrop: (dataUrl: string, rect: DisplayRect) => void
   onDismiss: () => void
+  onErrorDismiss: () => void
   onEmptyImport: () => void
   onPrev: () => void
   onNext: () => void
@@ -45,6 +46,7 @@ export default function MangaViewer({
   onDelete,
   onCrop,
   onDismiss,
+  onErrorDismiss,
   onEmptyImport,
   onPrev,
   onNext,
@@ -57,8 +59,10 @@ export default function MangaViewer({
   })
   // 双击缩放过渡动画开关（仅双语切换时启用，拖动平移保持即时）
   const [zoomTween, setZoomTween] = useState(false)
-  // 翻页动画：turn 记录旧页与方向（1=下一页从右滑入，-1=上一页从左滑入），动画结束清除
+  // 翻页动画：turn 记录旧页与方向（1=下一页从右滑入，-1=上一页从左滑入）
+  // animOn 两帧法：翻页先无过渡瞬移到屏幕外（start 类，图片借机解码），下一帧再加过渡类滑入（enter 类）
   const [turn, setTurn] = useState<{ from: string; dir: -1 | 1 } | null>(null)
+  const [animOn, setAnimOn] = useState(false)
   const [lastPage, setLastPage] = useState<{ src: string | null; idx: number; token: number }>({
     src: null,
     idx: pageIndex,
@@ -70,23 +74,97 @@ export default function MangaViewer({
   const currentSrc = src ?? null
 
   // 渲染阶段检测 src 变化：先记录旧页再切新页，保证动画从第一帧开始（避免闪一下）
+  // web 端（宽屏）翻页不做推页动画，直接切页；移动端保留推页动画
+  const desktopNoAnim =
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 641px)').matches
   if (lastPage.token !== resetToken) {
     // 打开新漫画/新图片：不播翻页动画，直接重置记录
     setLastPage({ src: currentSrc, idx: pageIndex, token: resetToken })
     setTurn(null)
+    setAnimOn(false)
     window.clearTimeout(turnTimerRef.current)
   } else if (currentSrc !== lastPage.src) {
     const prev = lastPage
     setLastPage({ src: currentSrc, idx: pageIndex, token: resetToken })
     if (prev.src && currentSrc) {
-      setTurn({ from: prev.src, dir: pageIndex > prev.idx ? 1 : -1 })
-      window.clearTimeout(turnTimerRef.current)
-      turnTimerRef.current = window.setTimeout(() => setTurn(null), 600)
+      if (desktopNoAnim) {
+        // web 端：直接切页，不播动画
+        setTurn(null)
+        setAnimOn(false)
+        window.clearTimeout(turnTimerRef.current)
+      } else {
+        setTurn({ from: prev.src, dir: pageIndex > prev.idx ? 1 : -1 })
+        setAnimOn(false)
+        window.clearTimeout(turnTimerRef.current)
+        turnTimerRef.current = window.setTimeout(() => {
+          setTurn(null)
+          setAnimOn(false)
+        }, 600)
+      }
     }
   }
 
+  // turn 出现后等两帧：先以静止帧渲染新页（start 类，图片开始解码），再挂过渡类播放滑入动画
+  useEffect(() => {
+    if (!turn) return
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setAnimOn(true))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [turn])
+
   useEffect(() => {
     return () => window.clearTimeout(turnTimerRef.current)
+  }, [])
+
+  // -------- 报错卡片：入场动画 + 5s 自动关闭（带退场动画） --------
+  const [errorVisible, setErrorVisible] = useState(false)
+  const [errorLeaving, setErrorLeaving] = useState(false)
+  const errorTimerRef = useRef<number | undefined>(undefined)
+
+  const dismissError = () => {
+    setErrorLeaving(true)
+    window.clearTimeout(errorTimerRef.current)
+    errorTimerRef.current = window.setTimeout(() => {
+      setErrorVisible(false)
+      onErrorDismiss()
+    }, 300)
+  }
+
+  // 错误出现时：显示卡片并启动 5s 自动关闭；错误清除/翻译开始时重置
+  useEffect(() => {
+    if (!error || translating) return
+    setErrorVisible(true)
+    setErrorLeaving(false)
+    window.clearTimeout(errorTimerRef.current)
+    errorTimerRef.current = window.setTimeout(dismissError, 5000)
+    return () => window.clearTimeout(errorTimerRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error, translating])
+
+  useEffect(() => {
+    return () => window.clearTimeout(errorTimerRef.current)
+  }, [])
+
+  // -------- 译文结果卡片：玻璃弹性弹入，关闭时先播退场动画再卸载 --------
+  const [resultLeaving, setResultLeaving] = useState(false)
+  const resultTimerRef = useRef<number | undefined>(undefined)
+
+  const closeResultCard = () => {
+    setResultLeaving(true)
+    window.clearTimeout(resultTimerRef.current)
+    resultTimerRef.current = window.setTimeout(() => {
+      setResultLeaving(false)
+      onDismiss()
+    }, 300)
+  }
+
+  useEffect(() => {
+    return () => window.clearTimeout(resultTimerRef.current)
   }, [])
 
   const imgRef = useRef<HTMLImageElement>(null)
@@ -323,8 +401,8 @@ export default function MangaViewer({
           {/* 翻页动画：推页式，旧页同向滑出、新页相对滑入（与阅读层 push/pop 同款滑动感） */}
           {turn && (
             <div
-              key="turn-old"
-              className={`turn-old-wrap turn-exit-${turn.dir > 0 ? 'next' : 'prev'}`}
+              key={`old-${turn.from}`}
+              className={`turn-old-wrap${animOn ? ` turn-exit-${turn.dir > 0 ? 'next' : 'prev'}` : ''}`}
             >
               <img
                 src={turn.from}
@@ -337,11 +415,15 @@ export default function MangaViewer({
               />
             </div>
           )}
+          {/* 固定元素不重建（img 复用，换 src 无空白帧）；翻页时先挂 start 类瞬移到屏幕外，两帧后挂 enter 类过渡滑入 */}
           <div
-            key="turn-new"
-            className={`turn-new-wrap${turn ? ` turn-enter-${turn.dir > 0 ? 'next' : 'prev'}` : ''}`}
-            onAnimationEnd={(e) => {
-              if (e.animationName.startsWith('turn-in')) setTurn(null)
+            className={`turn-new-wrap${turn ? (animOn ? ` turn-enter-${turn.dir > 0 ? 'next' : 'prev'}` : ` turn-start-${turn.dir > 0 ? 'next' : 'prev'}`) : ''}`}
+            onTransitionEnd={(e) => {
+              // 翻页过渡结束（忽略图片自身的缩放过渡）
+              if (e.target === e.currentTarget && e.propertyName === 'transform' && turn && animOn) {
+                setTurn(null)
+                setAnimOn(false)
+              }
             }}
           >
             <img
@@ -362,12 +444,32 @@ export default function MangaViewer({
           {result && !translating && (
             <TranslationCard
               result={{ ...result, rect: toViewportRect(result.rect) }}
-              onClose={onDismiss}
+              leaving={resultLeaving}
+              onAnimationEnd={(e) => {
+                if (e.animationName === 'result-card-out' && resultLeaving) {
+                  setResultLeaving(false)
+                  onDismiss()
+                }
+              }}
+              onClose={closeResultCard}
             />
           )}
-          {error && !translating && (
-            <div className="trans-error">
-              <span className="badge">错误</span>
+          {error && !translating && errorVisible && (
+            <div
+              className={`trans-error${errorLeaving ? ' leaving' : ''}`}
+              onAnimationEnd={(e) => {
+                if (e.animationName === 'trans-error-out' && errorLeaving) {
+                  setErrorVisible(false)
+                  onErrorDismiss()
+                }
+              }}
+            >
+              <div className="trans-error-head">
+                <span className="badge">错误</span>
+                <button className="close-btn" onClick={dismissError} title="关闭">
+                  关闭
+                </button>
+              </div>
               <div className="trans-error-msg">{error}</div>
             </div>
           )}

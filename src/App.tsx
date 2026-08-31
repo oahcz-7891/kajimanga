@@ -222,6 +222,7 @@ export default function App() {
 
   const handleCancel = useCallback(() => setSelectionActive(false), [])
   const handleDismiss = useCallback(() => setResult(null), [])
+  const handleErrorDismiss = useCallback(() => setError(null), [])
 
   // 翻页时同步写入对应漫画的进度
   useEffect(() => {
@@ -347,13 +348,11 @@ export default function App() {
       setSelectionActive(false)
       const settings = configs[provider]
       if (!settings.apiKey) {
-        setError('请先到设置里填写 API Key')
-        setSettingsOpen(true)
+        setError('请先在设置里填写 API Key')
         return
       }
       if (!settings.model) {
-        setError('请先到设置里填写模型名')
-        setSettingsOpen(true)
+        setError('请先在设置里填写模型名')
         return
       }
       setTranslating(true)
@@ -418,6 +417,7 @@ export default function App() {
           onDelete={handleDelete}
           onCrop={handleCrop}
           onDismiss={handleDismiss}
+          onErrorDismiss={handleErrorDismiss}
           onEmptyImport={() => archiveInputRef.current?.click()}
           onPrev={prev}
           onNext={next}
@@ -473,6 +473,7 @@ export default function App() {
             onDelete={handleDelete}
             onCrop={handleCrop}
             onDismiss={handleDismiss}
+            onErrorDismiss={handleErrorDismiss}
             onEmptyImport={() => archiveInputRef.current?.click()}
             onPrev={prev}
             onNext={next}

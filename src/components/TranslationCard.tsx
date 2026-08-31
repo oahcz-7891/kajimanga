@@ -1,19 +1,24 @@
+import type { AnimationEvent } from 'react'
 import type { LocalTranslateResult } from '../lib/types'
 
 interface Props {
   result: LocalTranslateResult
   onClose: () => void
+  /** 是否正在退场动画中（关闭时由父级传入，播完再真正卸载） */
+  leaving?: boolean
+  onAnimationEnd?: (e: AnimationEvent<HTMLDivElement>) => void
 }
 
-export default function TranslationCard({ result, onClose }: Props) {
-  const { rect } = result
-  // 卡片放在选区右侧（rect 为视口坐标），并钳制在屏幕可视范围内，缩放/平移后也不会跑出屏幕
-  const left = Math.max(8, Math.min(rect.x + rect.width + 10, window.innerWidth - 500))
-  const top = Math.min(Math.max(8, rect.y), Math.max(8, window.innerHeight - 240))
+export default function TranslationCard({ result, onClose, leaving, onAnimationEnd }: Props) {
+  // 水平居中由 CSS（left:50% + translateX(-50%)）实现；这里只控制垂直位置（中线附近，超高时钳制回屏内）
+  const top = Math.min(Math.max(12, (window.innerHeight - 300) / 2), window.innerHeight - 300)
 
   return (
-    <div className="result-card" style={{ left, top }}>
-      <div className="result-head">
+    <div
+      className={`result-card${leaving ? ' leaving' : ''}`}
+      onAnimationEnd={onAnimationEnd}
+      style={{ top }}
+    >      <div className="result-head">
         <span className="badge">译文</span>
         <button className="close-btn" onClick={onClose} title="关闭">
           关闭
