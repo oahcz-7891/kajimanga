@@ -25,6 +25,7 @@ interface MangaViewerProps {
   onCrop: (dataUrl: string, rect: DisplayRect) => void
   onDismiss: () => void
   onErrorDismiss: () => void
+  onCancelTranslate: () => void
   onEmptyImport: () => void
   onPrev: () => void
   onNext: () => void
@@ -47,6 +48,7 @@ export default function MangaViewer({
   onCrop,
   onDismiss,
   onErrorDismiss,
+  onCancelTranslate,
   onEmptyImport,
   onPrev,
   onNext,
@@ -440,6 +442,14 @@ export default function MangaViewer({
               }}
             />
           </div>
+
+          {translating && (
+            <div className="translating-card">
+              <button className="close-btn" onClick={onCancelTranslate} title="取消翻译">
+                取消翻译
+              </button>
+            </div>
+          )}
 
           {result && !translating && (
             <TranslationCard

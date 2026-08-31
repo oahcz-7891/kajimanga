@@ -116,6 +116,7 @@ export async function translateImage(
   settings: ProviderSettings,
   imageDataUrl: string,
   mode: ReadMode = 'translate',
+  signal?: AbortSignal,
 ): Promise<TranslateResult> {
   const base = settings.baseUrl.replace(/\/+$/, '')
   const url = `${base}/chat/completions`
@@ -135,7 +136,19 @@ export async function translateImage(
   }
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, REQUEST_TIMEOUT_MS)
+  // 外部取消（用户点“取消翻译”）与内部超时共用同一个 AbortController
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort()
+    } else {
+      signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+  }
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -168,9 +181,8 @@ export async function translateImage(
     }
     return { text: '', translated: raw.trim() }
   } catch (e) {
-    if (controller.signal.aborted) {
-      throw new Error('请求超时')
-    }
+    if (signal?.aborted) throw new Error('已取消')
+    if (timedOut) throw new Error('请求超时')
     throw new Error('请求失败')
   } finally {
     clearTimeout(timer)

@@ -86,7 +86,11 @@ export default function Toolbar(props: ToolbarProps) {
               <XIcon size={16} /> 取消选区
             </button>
           ) : (
-            <button className="btn primary" onClick={onTranslate} disabled={translating}>
+            <button
+              className={`btn${translating ? '' : ' primary'}`}
+              onClick={onTranslate}
+              disabled={translating}
+            >
               {translating ? '翻译中…' : '翻译'}
             </button>
           ))}

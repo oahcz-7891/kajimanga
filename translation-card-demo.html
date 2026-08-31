@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>译文卡片 · 毛玻璃 vs 无毛玻璃 演示</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    color: #1f2328;
+    background: #eef1f4;
+    /* 让毛玻璃有东西可模糊：渐变 + 色块 + 文字 */
+    background-image:
+      radial-gradient(600px 300px at 15% 20%, rgba(9, 105, 218, 0.55), transparent 70%),
+      radial-gradient(700px 400px at 85% 75%, rgba(196, 58, 250, 0.45), transparent 70%),
+      linear-gradient(135deg, #dbeafe 0%, #f0f4ff 50%, #fce7f3 100%);
+    padding: 24px 16px 60px;
+  }
+
+  h1 { text-align: center; font-size: 20px; margin: 8px 0 4px; }
+  .sub { text-align: center; color: #656d76; font-size: 13px; margin: 0 0 24px; }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto 30px;
+    padding: 40px 0 120px;
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 18px;
+  }
+  @media (max-width: 760px) {
+    .columns { grid-template-columns: 1fr; }
+  }
+  .col-title { text-align: center; font-size: 14px; font-weight: 600; }
+  .col-title.glass { color: #0969da; }
+  .col-title.solid { color: #6e5494; }
+
+  /* ============ 共用卡片 ============ */
+  .card {
+    position: fixed;
+    left: 50%;
+    width: 420px;
+    max-width: calc(100vw - 32px);
+    padding: 18px 22px;
+    line-height: 1.5;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(31, 35, 40, 0.18);
+  }
+  .card.glass {
+    top: 18%;
+    transform: translate(-50%, 0);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    animation: spring-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .card.solid {
+    bottom: 20px;
+    transform: translate(-50%, 0);
+    /* 无毛玻璃：纯不透明 */
+    background: #ffffff;
+    border: 1px solid #d8dee4;
+    animation: spring-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .card.leaving {
+    animation: spring-out 0.32s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .badge {
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #000;
+    border-radius: 8px;
+  }
+  .close {
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #000;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .close:hover { background: #1f2328; }
+
+  .orig { font-size: 15px; color: #656d76; margin-bottom: 8px; }
+  .trans { font-size: 15px; color: #1f2328; font-weight: 500; }
+
+  .actions { text-align: center; }
+  .btn {
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    background: #000;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .btn:hover { background: #1f2328; }
+  .btn + .btn { margin-left: 10px; }
+
+  /* 弹性弹簧弹入：过头 → 回弹 → 回正 */
+  @keyframes spring-in {
+    0%   { opacity: 0; transform: translate(-50%, -36px) scale(0.92); }
+    60%  { opacity: 1; transform: translate(-50%, 7px) scale(1.03); }
+    78%  { transform: translate(-50%, -3px) scale(0.985); }
+    90%  { transform: translate(-50%, 1px) scale(1.008); }
+    100% { transform: translate(-50%, 0) scale(1); }
+  }
+  /* 退场：先轻微下压（张力）再向上淡出 */
+  @keyframes spring-out {
+    0%   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    35%  { transform: translate(-50%, 5px) scale(1.015); }
+    100% { opacity: 0; transform: translate(-50%, -18px) scale(0.95); }
+  }
+</style>
+</head>
+<body>
+
+  <h1>译文卡片：毛玻璃 vs 无毛玻璃</h1>
+  <p class="sub">两张卡片都带同样的弹性弹出 / 退场动画，上＝毛玻璃（backdrop-filter），下＝纯白不透明</p>
+
+  <div class="stage"></div>
+
+  <!-- 毛玻璃卡片 -->
+  <div class="card glass" id="glassCard">
+    <div class="head">
+      <span class="badge">译文</span>
+      <button class="close" onclick="closeCard('glassCard')">关闭</button>
+    </div>
+    <div class="orig">この世界のどこかで、きっと君を待っている人がいる。</div>
+    <div class="trans">在这个世界的某个地方，一定有个人在等着你。</div>
+  </div>
+
+  <!-- 无毛玻璃卡片（纯不透明） -->
+  <div class="card solid" id="solidCard">
+    <div class="head">
+      <span class="badge">译文</span>
+      <button class="close" onclick="closeCard('solidCard')">关闭</button>
+    </div>
+    <div class="orig">この世界のどこかで、きっと君を待っている人がいる。</div>
+    <div class="trans">在这个世界的某个地方，一定有个人在等着你。</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" onclick="openCard('glassCard')">重播毛玻璃卡片</button>
+    <button class="btn" onclick="openCard('solidCard')">重播无毛玻璃卡片</button>
+  </div>
+
+<script>
+  function closeCard(id) {
+    const el = document.getElementById(id)
+    if (!el || el.classList.contains('leaving')) return
+    el.classList.add('leaving')
+    // animationend 后移除（动画可能被 reduced-motion 禁掉，用定时器兜底）
+    setTimeout(() => {
+      el.classList.remove('leaving')
+      el.style.display = 'none'
+    }, 350)
+  }
+
+  function openCard(id) {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.style.display = ''
+    // 移除旧动画类，强制重放
+    el.classList.remove('leaving')
+    void el.offsetWidth // 强制 reflow，确保动画重触发
+    el.classList.remove('leaving') // 无 leaving，重新挂载 animation（类本身没变时不会重放，
+                                   // 这里通过 display none→block + reflow 恢复）
+  }
+
+  // 重播动画：先隐藏再显示，可达动画重放
+  function replay(el) {
+    const old = el.style.animation
+    el.style.animation = 'none'
+    void el.offsetWidth
+    el.style.animation = old || 'spring-in 0.55s cubic-bezier(0.22, 1, 0.36, 1)'
+  }
+  // 覆盖 openCard 实现为重放动画
+  openCard = function (id) {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.style.display = ''
+    el.classList.remove('leaving')
+    replay(el)
+  }
+</script>
+</body>
+</html>

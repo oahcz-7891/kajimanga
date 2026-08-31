@@ -502,6 +502,48 @@ button {
 }
 
 /* ---------- 译文卡片 ---------- */
+/* 翻译中卡片：居中弹出，带取消按钮 */
+.translating-card {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 20px;
+  line-height: 1.5;
+  background: #ffffff;
+  border: 1px solid #d8dee4;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(31, 35, 40, 0.18);
+  animation: translating-card-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 翻译中卡片的按钮单独放大（不影响其它卡片） */
+.translating-card .close-btn {
+  padding: 9px 22px;
+  font-size: 14px;
+}
+
+@keyframes translating-card-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .translating-card {
+    animation: none;
+  }
+}
+
 .result-card {
   position: fixed;
   left: 50%;
@@ -510,13 +552,10 @@ button {
   max-width: 680px;
   padding: 22px 26px;
   line-height: 1.55;
-  /* iOS 26 Liquid Glass：毛玻璃半透明 */
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: #ffffff;
+  border: 1px solid #d8dee4;
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(31, 35, 40, 0.14);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
 }
 
 /* 弹性弹簧弹入（多帧：过头 → 回弹 → 回正） */
@@ -577,7 +616,7 @@ button {
   gap: 12px;
   margin-bottom: 14px;
   padding-bottom: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+  border-bottom: 1px solid var(--border-muted);
 }
 
 .badge {
@@ -601,14 +640,14 @@ button {
 
 /* 日语 / 中文纯文本 */
 .result-orig {
-  font-size: 16px;
+  font-size: 17px;
   color: var(--fg-muted);
-  margin-bottom: 9px;
+  margin-bottom: 10px;
   word-break: break-word;
 }
 
 .result-trans {
-  font-size: 15px;
+  font-size: 16px;
   color: var(--fg);
   font-weight: 500;
   word-break: break-word;
@@ -682,13 +721,10 @@ button {
   line-height: 1.5;
   width: 460px;
   max-width: calc(100vw - 48px);
-  /* iOS 26 Liquid Glass：毛玻璃半透明 */
-  background: rgba(248, 249, 250, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: #ffffff;
+  border: 1px solid #d8dee4;
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(31, 35, 40, 0.14);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
 }
 
 /* 错误卡片头部：徽章与关闭按钮同一行（与译文卡片 result-head 一致） */
@@ -699,7 +735,7 @@ button {
   gap: 12px;
   margin-bottom: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+  border-bottom: 1px solid var(--border-muted);
 }
 
 .trans-error-head .badge {

@@ -119,6 +119,8 @@ export default function App() {
   // 打开新漫画/新图片时递增，用于触发阅读层缩放等临时状态重置
   const [readerNonce, setReaderNonce] = useState(0)
   const archiveInputRef = useRef<HTMLInputElement>(null)
+  // 当前翻译请求的 AbortController，用于“取消翻译”
+  const translateAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(configs))
@@ -355,20 +357,34 @@ export default function App() {
         setError('请先在设置里填写模型名')
         return
       }
+      const controller = new AbortController()
+      translateAbortRef.current = controller
       setTranslating(true)
       setResult(null)
       setError(null)
       try {
-        const r = await translateImage(provider, settings, dataUrl, appSettings.mode)
+        const r = await translateImage(provider, settings, dataUrl, appSettings.mode, controller.signal)
         setResult({ ...r, rect })
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        // 用户主动取消翻译：不弹错误
+        if (!controller.signal.aborted) {
+          setError(e instanceof Error ? e.message : String(e))
+        }
       } finally {
+        if (translateAbortRef.current === controller) translateAbortRef.current = null
         setTranslating(false)
       }
     },
     [configs, provider, appSettings.mode],
   )
+
+  // 取消翻译：中断进行中的请求
+  const handleCancelTranslate = useCallback(() => {
+    translateAbortRef.current?.abort()
+    translateAbortRef.current = null
+    setTranslating(false)
+    setSelectionActive(false)
+  }, [])
 
   const current = pages[pageIndex]
 
@@ -418,6 +434,7 @@ export default function App() {
           onCrop={handleCrop}
           onDismiss={handleDismiss}
           onErrorDismiss={handleErrorDismiss}
+          onCancelTranslate={handleCancelTranslate}
           onEmptyImport={() => archiveInputRef.current?.click()}
           onPrev={prev}
           onNext={next}
@@ -474,6 +491,7 @@ export default function App() {
             onCrop={handleCrop}
             onDismiss={handleDismiss}
             onErrorDismiss={handleErrorDismiss}
+            onCancelTranslate={handleCancelTranslate}
             onEmptyImport={() => archiveInputRef.current?.click()}
             onPrev={prev}
             onNext={next}
