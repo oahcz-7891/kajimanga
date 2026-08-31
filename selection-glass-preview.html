@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kajimanga · 液态玻璃选区框预览</title>
+<style>
+  :root[data-theme="light"] { --page-bg: #e8ecf1; }
+  :root[data-theme="dark"] { --page-bg: #010409; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    color: #1f2328;
+    background: #f6f8fa;
+    padding: 20px 16px 60px;
+  }
+  h1 { text-align: center; font-size: 20px; margin: 8px 0 4px; }
+  .sub { text-align: center; font-size: 13px; color: #656d76; margin: 0 0 20px; }
+
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 99;
+    padding: 6px 12px; font-size: 13px; font-weight: 600;
+    color: var(--fg, #1f2328); background: #fff;
+    border: 1px solid #d8dee4; border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(140,149,159,0.25);
+    cursor: pointer;
+  }
+
+  /* ============ 模拟漫画页 ============ */
+  .page {
+    position: relative;
+    width: 520px;
+    max-width: calc(100vw - 32px);
+    height: 640px;
+    margin: 0 auto;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--page-bg);
+    box-shadow: 0 8px 30px rgba(31,35,40,0.18);
+    transition: background 0.2s ease;
+  }
+  /* 假漫画内容：彩色色块 + 竖排文字，让毛玻璃看得清 */
+  .page .manga-bg {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(220px 180px at 18% 12%, rgba(9,105,218,0.5), transparent 70%),
+      radial-gradient(200px 160px at 82% 28%, rgba(196,58,250,0.4), transparent 70%),
+      radial-gradient(260px 200px at 70% 82%, rgba(31,136,61,0.35), transparent 70%),
+      linear-gradient(160deg, #dfe7f5 0%, #f2ecfa 55%, #fdf3e2 100%);
+  }
+  :root[data-theme="dark"] .page .manga-bg {
+    background:
+      radial-gradient(220px 180px at 18% 12%, rgba(56,139,253,0.45), transparent 70%),
+      radial-gradient(200px 160px at 82% 28%, rgba(168,85,247,0.35), transparent 70%),
+      radial-gradient(260px 200px at 70% 82%, rgba(63,185,80,0.3), transparent 70%),
+      linear-gradient(160deg, #0d1117 0%, #161b22 55%, #101622 100%);
+  }
+  .page .panel-text {
+    position: absolute;
+    top: 14%; left: 12%;
+    font-size: 44px; font-weight: 800;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 6px; line-height: 1.5;
+    writing-mode: vertical-rl;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .page .dots {
+    position: absolute; top: 0; right: 0;
+    width: 120px; height: 120px;
+    background-image: radial-gradient(rgba(255,255,255,0.5) 1.5px, transparent 1.5px);
+    background-size: 14px 14px;
+    opacity: 0.7;
+  }
+
+  /* ============ 液态玻璃选区框 ============ */
+  .glass-selection {
+    position: absolute;
+    left: 22%;
+    top: 26%;
+    width: 260px;
+    height: 210px;
+    border-radius: 8px;
+    /* 玻璃材质 */
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.14);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    backdrop-filter: blur(10px) saturate(180%);
+    box-shadow:
+      inset 0 0 24px rgba(255, 255, 255, 0.18),
+      0 6px 24px rgba(15, 23, 42, 0.22),
+      0 0 0 1px rgba(255, 255, 255, 0.28);
+    cursor: crosshair;
+  }
+  /* 四角角标（左上 / 右下） */
+  .glass-selection::before,
+  .glass-selection::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 0 solid #fff;
+  }
+  .glass-selection::before {
+    left: -2px;
+    top: -2px;
+    border-top-width: 3px;
+    border-left-width: 3px;
+    border-top-left-radius: 6px;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,0.7));
+  }
+  .glass-selection::after {
+    right: -2px;
+    bottom: -2px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    border-bottom-right-radius: 6px;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,0.7));
+  }
+  /* 顶部高光光带 */
+  .glass-selection .glint {
+    position: absolute;
+    left: 8px; right: 8px; top: 4px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent);
+  }
+
+  .note {
+    max-width: 520px;
+    margin: 16px auto 0;
+    font-size: 13px;
+    color: #656d76;
+    line-height: 1.7;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <button class="theme-toggle" id="toggleBtn">切换亮暗背景</button>
+
+  <h1>液态玻璃选区框 预览</h1>
+  <p class="sub">框内毛玻璃模糊 + 高光描边 + 发光角标（模拟漫画页背景，方便观察效果）</p>
+
+  <div class="page">
+    <div class="manga-bg"></div>
+    <div class="dots"></div>
+    <div class="panel-text">ここは<br/>日本</div>
+
+    <!-- 液态玻璃选区框 -->
+    <div class="glass-selection">
+      <span class="glint"></span>
+    </div>
+  </div>
+
+  <p class="note">
+    当前为静态效果示意。应用到项目后：拖动框选时实时跟随手指/鼠标，框内即时毛玻璃。
+    亮暗背景点右上角切换。
+  </p>
+
+<script>
+  const btn = document.getElementById('toggleBtn')
+  btn.addEventListener('click', () => {
+    const root = document.documentElement
+    const dark = root.dataset.theme === 'dark'
+    root.dataset.theme = dark ? 'light' : 'dark'
+    btn.textContent = dark ? '切换亮暗背景' : '切换亮暗背景'
+  })
+</script>
+</body>
+</html>

@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-btn="glass">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kajimanga · 暗黑模式预览</title>
+<style>
+  /* ============ 主题变量：亮色 ============ */
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --bg-subtle: #f6f8fa;
+    --border: #d0d7de;
+    --border-muted: #d8dee4;
+    --fg: #1f2328;
+    --fg-muted: #656d76;
+    --accent: #0969da;
+    --danger: #cf222e;
+    --shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+    --stage-bg: #eef1f4;
+    --card-bg: #ffffff;
+    --cover-bg: #ffffff;
+    --shade: rgba(15, 15, 15, 0.34);
+  }
+
+  /* ============ 主题变量：暗色 ============ */
+  :root[data-theme="dark"] {
+    --bg: #0d1117;
+    --bg-subtle: #161b22;
+    --border: #30363d;
+    --border-muted: #21262d;
+    --fg: #e6edf3;
+    --fg-muted: #8b949e;
+    --accent: #58a6ff;
+    --danger: #f85149;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --stage-bg: #010409;
+    --card-bg: #1c2128;
+    --cover-bg: #21262d;
+    --shade: rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    transition: background 0.2s ease, color 0.2s ease;
+    padding-bottom: 90px;
+  }
+
+  h1 { font-size: 20px; margin: 20px 0 4px; text-align: center; }
+  .sub { text-align: center; font-size: 13px; color: var(--fg-muted); margin: 0 0 18px; }
+
+  /* 主题切换 */
+  .theme-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 99;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    background: var(--card-bg);
+    border: 1px solid var(--border-muted);
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+  }
+  .theme-toggle .dot {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+
+  /* ============ 应用外壳 ============ */
+  .phone {
+    max-width: 560px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-height: 560px;
+    background: var(--bg);
+  }
+
+  /* 顶栏 */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .toolbar-left { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; padding: 0;
+    color: var(--fg-muted); background: transparent;
+    border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 18px;
+  }
+  .icon-btn:hover { color: var(--fg); background: var(--bg-subtle); }
+  .brand { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 15px; }
+  .brand .k { width: 22px; height: 22px; border-radius: 50%; background: var(--fg); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; font-size: 14px; font-weight: 500; line-height: 20px;
+    color: var(--fg); background: var(--bg-subtle);
+    border: 1px solid var(--border-muted); border-radius: 6px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn.primary { background: #000; border-color: #000; color: #fff; }
+  .btn.primary:hover { background: #1f2328; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* 暗色主按钮：4 种方案（badge / close 与主按钮同方案） */
+
+  /* 方案 B：iOS 26 液态玻璃（白色半透明玻璃 + 高光 + 弹簧感） */
+  :root[data-btn="glass"] .btn.primary {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.28));
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: #1f2328;
+    box-shadow: 0 6px 20px rgba(31, 35, 40, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  :root[data-btn="glass"] .btn.primary:hover { filter: brightness(1.08); }
+  :root[data-btn="glass"] .btn.primary:active { transform: scale(0.96); }
+  :root[data-btn="glass"] .badge,
+  :root[data-btn="glass"] .close {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.28));
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: #1f2328;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+  :root[data-btn="glass"] .close:hover { filter: brightness(1.08); }
+  :root[data-btn="glass"] .close:active { transform: scale(0.96); }
+
+  /* 方案 C：品牌蓝渐变（iOS 风格） */
+  :root[data-theme="dark"][data-btn="blue"] .btn.primary {
+    background: linear-gradient(180deg, #2f81f7 0%, #1f6feb 100%);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+  :root[data-theme="dark"][data-btn="blue"] .btn.primary:hover,
+  :root[data-theme="dark"][data-btn="blue"] .close:hover { filter: brightness(1.15); }
+  :root[data-theme="dark"][data-btn="blue"] .badge,
+  :root[data-theme="dark"][data-btn="blue"] .close {
+    background: linear-gradient(180deg, #2f81f7 0%, #1f6feb 100%);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+
+  /* 方案 C：GitHub 风格绿 */
+  :root[data-theme="dark"][data-btn="green"] .btn.primary {
+    background: #238636; border-color: rgba(255, 255, 255, 0.12); color: #ffffff;
+  }
+  :root[data-theme="dark"][data-btn="green"] .btn.primary:hover,
+  :root[data-theme="dark"][data-btn="green"] .close:hover { background: #2ea043; }
+  :root[data-theme="dark"][data-btn="green"] .badge,
+  :root[data-theme="dark"][data-btn="green"] .close {
+    background: #238636; border-color: rgba(255, 255, 255, 0.12); color: #ffffff;
+  }
+
+  /* 方案 D：深色液态玻璃（iOS 26 暗色玻璃材质） */
+  :root[data-btn="dark"] .btn.primary {
+    background: linear-gradient(180deg, rgba(48, 54, 61, 0.72), rgba(22, 27, 34, 0.5));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #e6edf3;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    transition: transform 0.12s ease, filter 0.12s ease;
+  }
+  :root[data-btn="dark"] .btn.primary:hover { filter: brightness(1.2); }
+  :root[data-btn="dark"] .btn.primary:active { transform: scale(0.96); }
+  :root[data-btn="dark"] .badge,
+  :root[data-btn="dark"] .close {
+    background: linear-gradient(180deg, rgba(48, 54, 61, 0.72), rgba(22, 27, 34, 0.5));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #e6edf3;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+  }
+  :root[data-btn="dark"] .close:hover { filter: brightness(1.2); }
+  :root[data-btn="dark"] .close:active { transform: scale(0.96); }
+
+  /* 阅读区 */
+  .viewer {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--stage-bg);
+    padding: 16px;
+    min-height: 360px;
+    position: relative;
+  }
+  /* 模拟漫画页 */
+  .page-demo {
+    width: 240px; height: 340px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.12);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fg-muted); font-size: 13px;
+  }
+
+  /* 底部导航 */
+  .nav-bottom {
+    display: flex; align-items: center; justify-content: center; gap: 22px;
+    padding: 8px 0 10px;
+    background: var(--bg); border-top: 1px solid var(--border);
+  }
+  .page-info { min-width: 68px; text-align: center; font-size: 13px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+
+  /* ============ 浮出卡片演示 ============ */
+  .demo-actions {
+    max-width: 560px; margin: 18px auto 0;
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+  }
+  .card-layer {
+    position: fixed; left: 50%; top: 40%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    width: 380px; max-width: calc(100vw - 32px);
+    padding: 18px 22px; line-height: 1.5;
+    background: var(--card-bg);
+    border: 1px solid var(--border-muted);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .card-layer .head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 12px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .badge {
+    padding: 5px 12px; font-size: 13px; font-weight: 600;
+    color: #fff; background: #000; border-radius: 8px;
+  }
+  .close {
+    padding: 5px 12px; font-size: 13px; font-weight: 600;
+    color: #fff; background: #000; border: none; border-radius: 8px; cursor: pointer;
+  }
+  .orig { font-size: 15px; color: var(--fg-muted); margin-bottom: 8px; }
+  .trans { font-size: 15px; color: var(--fg); font-weight: 500; }
+  .err-msg { font-size: 13px; color: var(--danger); word-break: break-all; }
+  .hidden { display: none; }
+
+  /* 淡入 */
+  @keyframes fade-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .card-layer { animation: fade-in 0.3s ease; }
+</style>
+</head>
+<body>
+
+  <button class="theme-toggle" id="toggleBtn">
+    <span class="dot"></span>
+    <span id="toggleLabel">切换到暗色</span>
+  </button>
+
+  <h1>Kajimanga · 暗黑模式预览</h1>
+  <p class="sub">点右上角切换亮 / 暗色，下方按钮演示各卡片在暗色下的效果</p>
+
+  <!-- ======== 应用外壳：阅读界面 ======== -->
+  <div class="phone">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button class="icon-btn">‹</button>
+        <div class="brand"><span class="k">K</span>Kajimanga</div>
+      </div>
+      <div class="toolbar-left">
+        <button class="btn primary">翻译</button>
+        <button class="icon-btn">⚙</button>
+      </div>
+    </div>
+
+    <div class="viewer">
+      <div class="page-demo">漫画页</div>
+    </div>
+
+    <div class="nav-bottom">
+      <button class="icon-btn">‹</button>
+      <span class="page-info">3 / 24</span>
+      <button class="icon-btn">›</button>
+    </div>
+  </div>
+
+  <!-- ======== 卡片演示按钮 ======== -->
+  <div class="demo-actions">
+    <button class="btn" onclick="showCard('result')">译文卡片</button>
+    <button class="btn" onclick="showCard('translating')">翻译中卡片</button>
+    <button class="btn" onclick="showCard('error')">报错卡片</button>
+  </div>
+
+  <!-- 暗色主按钮方案选择 -->
+  <div class="demo-actions" style="margin-top:10px;">
+    <span style="font-size:13px;color:var(--fg-muted);align-self:center;">暗色按钮方案：</span>
+    <button class="btn" data-btn-opt="glass" onclick="setBtn('glass')">玻璃</button>
+    <button class="btn" data-btn-opt="blue" onclick="setBtn('blue')">蓝渐变</button>
+    <button class="btn" data-btn-opt="green" onclick="setBtn('green')">绿色</button>
+    <button class="btn" data-btn-opt="dark" onclick="setBtn('dark')">深灰</button>
+  </div>
+
+  <!-- 译文卡片 -->
+  <div class="card-layer hidden" id="card-result">
+    <div class="head">
+      <span class="badge">译文</span>
+      <button class="close" onclick="hideCard('result')">关闭</button>
+    </div>
+    <div class="orig">この世界のどこかで、きっと君を待っている人がいる。</div>
+    <div class="trans">在这个世界的某个地方，一定有个人在等着你。</div>
+  </div>
+
+  <!-- 翻译中卡片 -->
+  <div class="card-layer hidden" id="card-translating" style="width:auto; padding:10px 12px; display:none;">
+    <button class="close" onclick="hideCard('translating')">取消翻译</button>
+  </div>
+
+  <!-- 报错卡片 -->
+  <div class="card-layer hidden" id="card-error">
+    <div class="head">
+      <span class="badge">错误</span>
+      <button class="close" onclick="hideCard('error')">关闭</button>
+    </div>
+    <div class="err-msg">请先在设置里填写 API Key</div>
+  </div>
+
+<script>
+  const btn = document.getElementById('toggleBtn')
+  const label = document.getElementById('toggleLabel')
+  btn.addEventListener('click', () => {
+    const root = document.documentElement
+    const dark = root.dataset.theme === 'dark'
+    root.dataset.theme = dark ? 'light' : 'dark'
+    label.textContent = dark ? '切换到暗色' : '切换到亮色'
+  })
+
+  function showCard(id) {
+    document.querySelectorAll('.card-layer').forEach((el) => {
+      el.style.display = 'none'
+      el.classList.add('hidden')
+    })
+    const el = document.getElementById('card-' + id)
+    el.classList.remove('hidden')
+    el.style.display = ''
+  }
+  function hideCard(id) {
+    const el = document.getElementById('card-' + id)
+    el.classList.add('hidden')
+    el.style.display = 'none'
+  }
+
+  // 切换暗色主按钮方案
+  function setBtn(opt) {
+    document.documentElement.dataset.btn = opt
+    document.querySelectorAll('[data-btn-opt]').forEach((b) => {
+      const active = b.dataset.btnOpt === opt
+      b.style.outline = active ? '2px solid var(--fg)' : 'none'
+    })
+  }
+  setBtn('glass')
+</script>
+</body>
+</html>

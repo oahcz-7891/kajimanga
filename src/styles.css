@@ -436,9 +436,42 @@ button {
 
 .selection-box {
   position: absolute;
-  border: 2px solid var(--accent);
-  background: rgba(9, 105, 218, 0.12);
+  border-radius: 8px;
+  /* 透明液态玻璃：不做模糊，文字完全可见；只留高光描边 + 角标 */
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  background: transparent;
+  box-shadow:
+    0 6px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.25);
   pointer-events: none;
+}
+
+/* 左上 / 右下发光角标 */
+.selection-box::before,
+.selection-box::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 0 solid #fff;
+}
+
+.selection-box::before {
+  left: -2px;
+  top: -2px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 6px;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
+}
+
+.selection-box::after {
+  right: -2px;
+  bottom: -2px;
+  border-right-width: 3px;
+  border-bottom-width: 3px;
+  border-bottom-right-radius: 6px;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
 }
 
 /* 左右翻页热区：点击/触摸翻页（仅未选区、未放大时显示） */
@@ -1004,7 +1037,7 @@ button {
 
 .settings-card-title {
   margin-bottom: 14px;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--fg);
 }
@@ -1092,7 +1125,7 @@ button {
 .label {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: var(--fg);
 }
@@ -1100,7 +1133,7 @@ button {
 .input {
   width: 100%;
   padding: 6px 10px;
-  font-size: 14px;
+  font-size: 17px;
   color: var(--fg);
   background: var(--bg);
   border: 1px solid var(--border-muted);
@@ -1123,7 +1156,7 @@ button {
 
 .hint {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--fg-muted);
 }
 
@@ -1190,7 +1223,7 @@ button {
 }
 
 .test-msg {
-  font-size: 12px;
+  font-size: 14px;
   word-break: break-all;
 }
 
