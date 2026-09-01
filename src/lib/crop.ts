@@ -7,7 +7,7 @@ import type { DisplayRect } from './types'
 export function cropImageToDataUrl(
   img: HTMLImageElement,
   rect: DisplayRect,
-  maxDim = 1600,
+  maxDim = 1024,
 ): string | null {
   const nw = img.naturalWidth
   const nh = img.naturalHeight
@@ -52,5 +52,5 @@ export function cropImageToDataUrl(
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
-  return canvas.toDataURL('image/jpeg', 0.85)
+  return canvas.toDataURL('image/jpeg', 0.7)
 }
