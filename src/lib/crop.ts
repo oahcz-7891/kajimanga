@@ -29,6 +29,18 @@ export function cropImageToDataUrl(
 
   if (sw < 8 || sh < 8) return null
 
+  // 对齐到原始图像坐标的粗网格：相近的选框会裁出完全一致的图，
+  // 使感知哈希（dHash）必然命中，而不是因边界差几像素导致失配。
+  const GRID = 24
+  const sx2 = Math.round(sx / GRID) * GRID
+  const sy2 = Math.round(sy / GRID) * GRID
+  const ex2 = Math.round((sx + sw) / GRID) * GRID
+  const ey2 = Math.round((sy + sh) / GRID) * GRID
+  sx = Math.min(Math.max(0, sx2), nw - 1)
+  sy = Math.min(Math.max(0, sy2), nh - 1)
+  sw = Math.max(1, Math.min(ex2, nw) - sx)
+  sh = Math.max(1, Math.min(ey2, nh) - sy)
+
   // 控制输出尺寸，避免请求体积过大
   const scale = Math.min(1, maxDim / Math.max(sw, sh))
   const outW = Math.max(1, Math.round(sw * scale))

@@ -583,8 +583,8 @@ button {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 20;
-  width: min(920px, calc(100vw - 12px));
-  max-width: calc(100vw - 12px);
+  width: calc(100vw - 12px);
+  max-width: 920px;
   max-height: min(760px, calc(100dvh - 32px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -696,6 +696,46 @@ button {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--border-muted);
+}
+
+/* 译文卡片底部：本地缓存命中提示 */
+.result-cache {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-muted);
+  font-size: 12px;
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-cache::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.8;
+}
+
+/* 译文卡片底部右侧：重新翻译（黑色小按钮，不用分隔条） */
+.result-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.result-actions .btn {
+  background: #000;
+  color: #fff;
+  border: 1px solid #000;
+  padding: 4px 14px;
+  border-radius: 6px;
+}
+
+.result-actions .btn:hover {
+  background: #2b2b2b;
 }
 
 .learn-title {

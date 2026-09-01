@@ -4,12 +4,14 @@ import type { LocalTranslateResult } from '../lib/types'
 interface Props {
   result: LocalTranslateResult
   onClose: () => void
+  /** 点击“重新翻译”：不查缓存，强制走 API，成功后照常写缓存 */
+  onRetranslate: () => void
   /** 是否正在退场动画中（关闭时由父级传入，播完再真正卸载） */
   leaving?: boolean
   onAnimationEnd?: (e: AnimationEvent<HTMLDivElement>) => void
 }
 
-export default function TranslationCard({ result, onClose, leaving, onAnimationEnd }: Props) {
+export default function TranslationCard({ result, onClose, onRetranslate, leaving, onAnimationEnd }: Props) {
   return (
     <div
       className={`result-card${leaving ? ' leaving' : ''}`}
@@ -39,6 +41,14 @@ export default function TranslationCard({ result, onClose, leaving, onAnimationE
           )}
         </div>
       )}
+      {result.fromCache && result.savedTokens != null && (
+        <div className="result-cache">本地缓存命中约 {result.savedTokens} token</div>
+      )}
+      <div className="result-actions">
+        <button className="btn" onClick={onRetranslate}>
+          重新翻译
+        </button>
+      </div>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useState } from 'react'
 import { EyeClosedIcon, EyeIcon } from '@primer/octicons-react'
 import { PROVIDERS, PROVIDER_THINKING, THINKING_LABELS, defaultSettings, testConnection } from '../lib/visionApi'
+import { clearTranslationCache } from '../lib/translationCache'
 import {
   DOUBLE_TAP_LABELS,
   DOUBLE_TAP_RATIOS,
@@ -52,6 +53,8 @@ const SettingsForm = forwardRef<SettingsFormHandle, Props>(function SettingsForm
   const [showKey, setShowKey] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [clearingCache, setClearingCache] = useState(false)
+  const [cacheMsg, setCacheMsg] = useState('')
   const [appDraft, setAppDraft] = useState<AppSettings>(() => ({ ...appSettings }))
 
   const cur = draft[formProvider]
@@ -97,6 +100,19 @@ const SettingsForm = forwardRef<SettingsFormHandle, Props>(function SettingsForm
       setTestResult(r)
     } finally {
       setTesting(false)
+    }
+  }
+
+  async function clearCache() {
+    setClearingCache(true)
+    setCacheMsg('')
+    try {
+      await clearTranslationCache()
+      setCacheMsg('翻译缓存已清空')
+    } catch {
+      setCacheMsg('清空失败')
+    } finally {
+      setClearingCache(false)
     }
   }
 
@@ -192,7 +208,11 @@ const SettingsForm = forwardRef<SettingsFormHandle, Props>(function SettingsForm
         <button className="btn danger" onClick={resetCurrent}>
           重置当前供应商
         </button>
+        <button className="btn danger" onClick={clearCache} disabled={clearingCache}>
+          {clearingCache ? '清空中…' : '清空翻译缓存'}
+        </button>
       </div>
+      {cacheMsg && <div className="hint">{cacheMsg}</div>}
       </div>
 
       <div className="settings-card">

@@ -1,3 +1,4 @@
+import { computeDHash, getCachedTranslation, setCachedTranslation, buildParams, estimateImageTokens } from './translationCache'
 import type {
   ConfigMap,
   ProviderKey,
@@ -72,6 +73,7 @@ const PROMPT = [
   '日文文本可能是竖版或横版，识别时请注意文本方向。',
   '竖版文字的右边可能是注音或小字，请不要翻译这些注音或小字。',
   '横板文字的上面可能是注音或小字，请不要翻译这些注音或小字。',
+  '根据识别的文字的关键字，对漫画的内容进行合理的翻译',
   '只返回一个 JSON 对象，不要输出其它内容，格式如下：',
   '{"text": "识别到的日文原文", "translated": "中文翻译"}',
 ].join('\n')
@@ -81,20 +83,35 @@ const LEARN_PROMPT = [
   '日文文本可能是竖版或横版，识别时请注意文本方向。',
   '竖版文字的右边可能是注音或小字，请不要翻译这些注音或小字。',
   '横板文字的上面可能是注音或小字，请不要翻译这些注音或小字。',
+  '根据识别的文字的关键字，对漫画的内容进行合理的翻译',
   '只返回一个 JSON 对象，不要输出其它内容，格式如下：',
   '{"text": "识别到的日文原文", "translated": "中文翻译", "grammar": "语法说明", "words": "单词和短语释义"}',
 ].join('\n')
 
 function extractJson(s: string) {
-  const cleaned = s.replace(/```(?:json)?/gi, '').trim()
-  const m = cleaned.match(/\{[\s\S]*\}/)
-  const candidate = m ? m[0] : cleaned
-  try {
-    const obj = JSON.parse(candidate)
-    return typeof obj === 'object' ? (obj as Record<string, unknown>) : null
-  } catch {
-    return null
+  let cleaned = s.replace(/```(?:json)?/gi, '').trim()
+  const tryParse = (x: string): Record<string, unknown> | null => {
+    try {
+      const obj = JSON.parse(x)
+      return obj && typeof obj === 'object' ? (obj as Record<string, unknown>) : null
+    } catch {
+      return null
+    }
   }
+
+  // 候选：1) 整体；2) 提取可能被文字包裹的 { ... }
+  const candidates: string[] = [cleaned]
+  const start = cleaned.indexOf('{')
+  const end = cleaned.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    candidates.push(cleaned.slice(start, end + 1))
+  }
+
+  for (const c of candidates) {
+    const obj = tryParse(c)
+    if (obj) return obj
+  }
+  return null
 }
 
 /** 根据服务商和思考强度生成请求体里的参数 */
@@ -121,7 +138,27 @@ export async function translateImage(
   imageDataUrl: string,
   mode: ReadMode = 'translate',
   signal?: AbortSignal,
-): Promise<TranslateResult> {
+  forceRefresh = false,
+): Promise<TranslateResult & { fromCache?: boolean; savedTokens?: number }> {
+  // 1) 先查本地缓存（forceRefresh=true 时跳过查询，强制走 API）：
+  //    同一片文字、像素略变的截图用 dHash 容差命中，省掉图像请求
+  const cacheParams = buildParams(provider, settings, mode)
+  const dHash = await computeDHash(imageDataUrl).catch((e) => {
+    // 【临时诊断】dHash 失败会直接跳过缓存
+    console.warn('[cache] computeDHash 失败，本次跳过缓存:', e)
+    return null
+  })
+  if (!forceRefresh && dHash) {
+    const cached = await getCachedTranslation(cacheParams, dHash.hash).catch(() => null)
+    if (cached) {
+      return {
+        ...cached,
+        fromCache: true,
+        savedTokens: estimateImageTokens(dHash.width, dHash.height),
+      }
+    }
+  }
+
   const base = settings.baseUrl.replace(/\/+$/, '')
   const url = `${base}/chat/completions`
   const body = {
@@ -175,15 +212,22 @@ export async function translateImage(
     else if (Array.isArray(content)) raw = content.map((c) => c?.text ?? '').join('')
 
     const parsed = extractJson(raw)
+    let result: TranslateResult
     if (parsed) {
-      return {
+      result = {
         text: String(parsed.text ?? '').trim(),
         translated: String(parsed.translated ?? parsed.translation ?? '').trim(),
         grammar: parsed.grammar ? String(parsed.grammar).trim() : undefined,
         words: parsed.words ? String(parsed.words).trim() : undefined,
       }
+    } else {
+      result = { text: '', translated: raw.trim() }
     }
-    return { text: '', translated: raw.trim() }
+    // 2) 成功才写缓存，失败/取消不写
+    if (dHash) {
+      void setCachedTranslation(cacheParams, dHash.hash, result).catch(() => {})
+    }
+    return { ...result, fromCache: false }
   } catch (e) {
     if (signal?.aborted) throw new Error('已取消')
     if (timedOut) throw new Error('请求超时')

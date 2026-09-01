@@ -25,6 +25,8 @@ interface MangaViewerProps {
   onCrop: (dataUrl: string, rect: DisplayRect) => void
   onDismiss: () => void
   onErrorDismiss: () => void
+  /** 译文卡片“重新翻译”：不查缓存强制走 API */
+  onRetranslate: () => void
   onCancelTranslate: () => void
   onEmptyImport: () => void
   onPrev: () => void
@@ -48,6 +50,7 @@ export default function MangaViewer({
   onCrop,
   onDismiss,
   onErrorDismiss,
+  onRetranslate,
   onCancelTranslate,
   onEmptyImport,
   onPrev,
@@ -556,6 +559,7 @@ export default function MangaViewer({
                 }
               }}
               onClose={closeResultCard}
+              onRetranslate={onRetranslate}
             />
           )}
           {error && !translating && errorVisible && (

@@ -56,4 +56,9 @@ export interface DisplayRect {
   height: number
 }
 
-export type LocalTranslateResult = TranslateResult & { rect: DisplayRect }
+export type LocalTranslateResult = TranslateResult & {
+  rect: DisplayRect
+  fromCache?: boolean
+  /** 命中缓存时，本张图按尺寸估算的图像 token 节省量（约值） */
+  savedTokens?: number
+}

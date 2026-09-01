@@ -345,8 +345,11 @@ export default function App() {
     [readerIn, pages],
   )
 
-  const handleCrop = useCallback(
-    async (dataUrl: string, rect: DisplayRect) => {
+  // 最近一次裁剪，供“重新翻译”复用（不必重新框选）
+  const lastCropRef = useRef<{ dataUrl: string; rect: DisplayRect } | null>(null)
+
+  const doTranslate = useCallback(
+    async (dataUrl: string, rect: DisplayRect, forceRefresh: boolean) => {
       setSelectionActive(false)
       const settings = configs[provider]
       if (!settings.apiKey) {
@@ -363,7 +366,14 @@ export default function App() {
       setResult(null)
       setError(null)
       try {
-        const r = await translateImage(provider, settings, dataUrl, appSettings.mode, controller.signal)
+        const r = await translateImage(
+          provider,
+          settings,
+          dataUrl,
+          appSettings.mode,
+          controller.signal,
+          forceRefresh,
+        )
         setResult({ ...r, rect })
       } catch (e) {
         // 用户主动取消翻译：不弹错误
@@ -377,6 +387,20 @@ export default function App() {
     },
     [configs, provider, appSettings.mode],
   )
+
+  const handleCrop = useCallback(
+    async (dataUrl: string, rect: DisplayRect) => {
+      lastCropRef.current = { dataUrl, rect }
+      await doTranslate(dataUrl, rect, false)
+    },
+    [doTranslate],
+  )
+
+  // 重新翻译：不查缓存，强制走 API，成功后照常写缓存
+  const handleRetranslate = useCallback(() => {
+    const last = lastCropRef.current
+    if (last) void doTranslate(last.dataUrl, last.rect, true)
+  }, [doTranslate])
 
   // 取消翻译：中断进行中的请求
   const handleCancelTranslate = useCallback(() => {
@@ -434,6 +458,7 @@ export default function App() {
           onCrop={handleCrop}
           onDismiss={handleDismiss}
           onErrorDismiss={handleErrorDismiss}
+          onRetranslate={handleRetranslate}
           onCancelTranslate={handleCancelTranslate}
           onEmptyImport={() => archiveInputRef.current?.click()}
           onPrev={prev}
@@ -491,6 +516,7 @@ export default function App() {
             onCrop={handleCrop}
             onDismiss={handleDismiss}
             onErrorDismiss={handleErrorDismiss}
+            onRetranslate={handleRetranslate}
             onCancelTranslate={handleCancelTranslate}
             onEmptyImport={() => archiveInputRef.current?.click()}
             onPrev={prev}
