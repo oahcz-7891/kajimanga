@@ -66,6 +66,7 @@ export default function TranslationCard({
           关闭
         </button>
       </div>
+      <div className="result-body">
       {result.text && (
         <div className="result-ref">
           <button
@@ -115,6 +116,7 @@ export default function TranslationCard({
             输出 <b>{result.translateCompletionTokens ?? 0}</b>
           </span>
         </div>
+      </div>
       </div>
       <div className="result-actions">
         <button className="btn" onClick={onRetranslateFull} title="重新识别并翻译（跳过缓存）">
