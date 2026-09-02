@@ -41,9 +41,9 @@ export const PROVIDERS: Record<ProviderKey, { label: string; baseUrl: string; pl
   },
 }
 
-/** 各服务商支持的思考档位（只显示其实际支持的值） */
+/** 各服务商支持的思考档位（只显示其实际支持的值；DeepSeek 官方为 low/high/max，无 medium） */
 export const PROVIDER_THINKING: Record<ProviderKey, ThinkingStrength[]> = {
-  deepseek: ['off', 'low', 'medium', 'high'],
+  deepseek: ['off', 'low', 'high', 'max'],
   qwen: ['off', 'on'],
   kimi: ['off', 'on'],
   custom: ['off', 'low', 'medium', 'high'],
@@ -54,6 +54,7 @@ export const THINKING_LABELS: Record<ThinkingStrength, string> = {
   low: '低',
   medium: '中',
   high: '高',
+  max: '最高',
   on: '开启',
 }
 
@@ -84,13 +85,13 @@ const OCR_PROMPT = [
   '竖版文字的右边可能是注音或小字，请不要识别这些注音或小字。',
   '横板文字的上面可能是注音或小字，请不要识别这些注音或小字。',
   '只返回一个 JSON 对象，不要输出其它内容，格式如下：',
-  '返回的日文原文中单词或短语有汉字的，标注平假名',
   '{"text": "识别到的日文原文"}',
 ].join('\n')
 
 /** 翻译步骤：纯文本，把已识别文本翻译成简体中文 */
 const TRANSLATE_PROMPT = [
   '你是漫画翻译助手。请把下面给出的日文文本翻译成简体中文。',
+  // '单词或短语中有汉字的，标注单词或短语的平假名',
   '这是从漫画中识别出的文本，根据文本的关键字，对漫画的内容进行合理的翻译',
   '只返回一个 JSON 对象，不要输出其它内容，格式如下：',
   '{"translated": "中文翻译"}',
@@ -100,9 +101,9 @@ const TRANSLATE_PROMPT = [
 const LEARN_TRANSLATE_PROMPT = [
   '你是日语学习助手。请把下面给出的日文文本翻译成简体中文，并对文本进行学习解析。',
   '这是从漫画中识别出的文本，根据文本的关键字，对漫画的内容进行合理的翻译',
-  '单词或短语中有汉字的，标注单词或短语的平假名',
   '只返回一个 JSON 对象，不要输出其它内容，格式如下：',
   '{"translated": "中文翻译", "grammar": "语法说明", "words": "单词和短语释义"}',
+  '单词或短语释义部分中有汉字的，需标注单词或短语的平假名',
 ].join('\n')
 
 function extractJson(s: string) {
@@ -199,18 +200,21 @@ function hasBadString(s: unknown): boolean {
   return typeof s === 'string' && s.includes('[object Object]')
 }
 
-/** 根据服务商和思考强度生成请求体里的参数 */
+/** 根据服务商和思考强度生成请求体里的参数。
+ * off 时也要显式关闭（部分新模型默认思考，不传参数相当于保持思考） */
 function thinkingParams(provider: ProviderKey, thinking: ThinkingStrength): Record<string, unknown> {
-  if (thinking === 'off') return {}
   switch (provider) {
     case 'deepseek':
-      return { thinking: { type: 'enabled' }, reasoning_effort: thinking }
+      return thinking === 'off'
+        ? { thinking: { type: 'disabled' } }
+        : { thinking: { type: 'enabled' }, reasoning_effort: thinking }
     case 'qwen':
-      return { enable_thinking: true }
+      return thinking === 'off' ? { enable_thinking: false } : { enable_thinking: true }
     case 'kimi':
-      return { thinking: { type: 'enabled' } }
+      // Kimi 默认不思考，开启时才需要显式传参
+      return thinking === 'off' ? {} : { thinking: { type: 'enabled' } }
     default:
-      return { reasoning_effort: thinking }
+      return thinking === 'off' ? {} : { reasoning_effort: thinking }
   }
 }
 
@@ -221,16 +225,19 @@ const REQUEST_TIMEOUT_MS = 30_000
 interface ChatMessage {
   role: 'user'
   content:
-    | string
-    | Array<{ type: 'image_url'; image_url: { url: string } } | { type: 'text'; text: string }>
+  | string
+  | Array<{ type: 'image_url'; image_url: { url: string } } | { type: 'text'; text: string }>
 }
 
-/** OpenAI 兼容 /chat/completions 公共请求：返回内容原文 + 本次请求的输入 / 输出 token */
+/** OpenAI 兼容 /chat/completions 公共请求：返回内容原文 + 本次请求的输入 / 输出 token。
+ * jsonMode=true 时强制 response_format=json_object（消除模型夹带的解释性废话，降输出 token）；
+ * 若服务商不支持该参数（400/422 等）自动去掉后重试一次。 */
 async function chatCompletion(
   settings: ProviderSettings,
   messages: ChatMessage[],
   extras: Record<string, unknown>,
   signal?: AbortSignal,
+  jsonMode = false,
   timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<{ content: string; promptTokens?: number; completionTokens?: number }> {
   const base = settings.baseUrl.replace(/\/+$/, '')
@@ -239,6 +246,7 @@ async function chatCompletion(
     model: settings.model,
     temperature: 0.2,
     messages,
+    ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
     ...extras,
   }
 
@@ -268,16 +276,35 @@ async function chatCompletion(
     })
 
     if (!res.ok) {
+      // 服务商不支持 response_format（报 400 / 422 等）→ 去掉该参数重试一次
+      if (jsonMode && !signal?.aborted && !timedOut) {
+        return chatCompletion(settings, messages, extras, signal, false, timeoutMs)
+      }
       throw new Error('请求失败')
     }
 
     const data = await res.json()
     const usage = data?.usage as
-      | { prompt_tokens?: number; completion_tokens?: number }
+      | { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } }
       | undefined
     const promptTokens = usage?.prompt_tokens
     const completionTokens = usage?.completion_tokens
+    const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens
     const content = data?.choices?.[0]?.message?.content
+    // 【诊断】抓取模型原始返回：看是否走 json_object、token 构成（含推理链）、内容实际是什么
+    console.info(
+      '[api] jsonObject=%s in=%s out=%s reasoning=%s contentOut=%s raw=%s',
+      String(jsonMode),
+      String(promptTokens),
+      String(completionTokens),
+      String(reasoningTokens ?? '?'),
+      String(
+        completionTokens != null && reasoningTokens != null
+          ? Math.max(0, completionTokens - reasoningTokens)
+          : '?',
+      ),
+      JSON.stringify(content).slice(0, 500),
+    )
     if (typeof content === 'string') return { content, promptTokens, completionTokens }
     if (Array.isArray(content))
       return {
@@ -351,13 +378,14 @@ export async function ocrImage(
     ],
     thinkingParams(provider, settings.thinking),
     signal,
+    true,
   )
   const parsed = extractJson(raw)
   const text = parsed ? (fieldToString(parsed.text) ?? '') : raw.trim()
   // 成功才写缓存，失败 / 取消不写（精确层 + 模糊层各写一份）
   if (text) {
-    if (bh) void setCachedOCRHash(cacheParams, bh.hash, text).catch(() => {})
-    if (pageKey) void setCachedOCRExact(cacheParams, pageKey, text).catch(() => {})
+    if (bh) void setCachedOCRHash(cacheParams, bh.hash, text).catch(() => { })
+    if (pageKey) void setCachedOCRExact(cacheParams, pageKey, text).catch(() => { })
   }
   return { text, promptTokens, completionTokens }
 }
@@ -406,6 +434,7 @@ export async function translateText(
     [{ role: 'user', content: `${prompt}\n\n待翻译的日文文本：\n${text}` }],
     thinkingParams(provider, settings.thinking),
     signal,
+    true,
   )
   const parsed = extractJson(raw)
   let result: TranslateResult
@@ -420,7 +449,7 @@ export async function translateText(
     result = { text, translated: raw.trim() }
   }
   // 成功才写缓存，失败/取消不写
-  void setCachedTextTranslation(cacheParams, text, result).catch(() => {})
+  void setCachedTextTranslation(cacheParams, text, result).catch(() => { })
   return {
     translated: result.translated,
     grammar: result.grammar,

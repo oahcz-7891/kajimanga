@@ -1,4 +1,4 @@
-export type ThinkingStrength = 'off' | 'low' | 'medium' | 'high' | 'on'
+export type ThinkingStrength = 'off' | 'low' | 'medium' | 'high' | 'max' | 'on'
 export type ProviderKey = 'deepseek' | 'qwen' | 'kimi' | 'custom'
 
 export interface ProviderSettings {
