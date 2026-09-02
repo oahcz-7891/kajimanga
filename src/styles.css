@@ -343,6 +343,8 @@ button {
   max-height: calc(100vh - 96px);
   max-height: calc(100dvh - 96px);
   user-select: none;
+  /* 提升为独立合成层：拖动 / 缩放只走 GPU 合成，减少 iOS 重绘制 */
+  will-change: transform;
 }
 
 /* 双击缩放过渡动画（仅双击切换时启用，拖动平移无动画，保持即时） */

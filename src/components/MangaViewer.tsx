@@ -195,8 +195,23 @@ export default function MangaViewer({
     cy: number
   } | null>(null)
 
+  // 手势期间直接写 DOM 的实时缩放：拖动 / 捏合不触发 React 渲染，图片紧随手指
+  // （zoomRef 与 React state 保持同步，松手时一次性 setZoom 归还给 React）
+  const zoomRef = useRef(zoom)
+  useEffect(() => {
+    zoomRef.current = zoom
+  }, [zoom])
+  const applyZoomLive = (z: { scale: number; tx: number; ty: number }) => {
+    zoomRef.current = z
+    const img = imgRef.current
+    if (img) {
+      img.style.transform = `scale(${z.scale}) translate(${z.tx}px, ${z.ty}px)`
+    }
+  }
+
   // 打开新漫画 / 双击设置变更 → 完全重置缩放（进入选区不重置，保留当前缩放进行翻译）
   useEffect(() => {
+    zoomRef.current = { scale: 1, tx: 0, ty: 0 }
     setBox(null)
     setZoom({ scale: 1, tx: 0, ty: 0 })
     setZoomTween(false)
@@ -208,6 +223,7 @@ export default function MangaViewer({
 
   // 翻页：缩放只对当前页有效，切页后恢复原大小
   useEffect(() => {
+    zoomRef.current = { scale: 1, tx: 0, ty: 0 }
     setZoom({ scale: 1, tx: 0, ty: 0 })
     setZoomTween(false)
   }, [src])
@@ -404,9 +420,9 @@ export default function MangaViewer({
       const pts = [...pointersRef.current.values()]
       pinchRef.current = {
         dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
-        scale: zoom.scale,
-        tx: zoom.tx,
-        ty: zoom.ty,
+        scale: zoomRef.current.scale,
+        tx: zoomRef.current.tx,
+        ty: zoomRef.current.ty,
         cx: (pts[0].x + pts[1].x) / 2,
         cy: (pts[0].y + pts[1].y) / 2,
       }
@@ -429,11 +445,16 @@ export default function MangaViewer({
     }
     tapRef.current = { t: now, x: e.clientX, y: e.clientY }
     // 放大状态：开始拖动平移（拖动保持即时，不需要缩放动画）
-    if (zoom.scale > 1) {
+    if (zoomRef.current.scale > 1) {
       setZoomTween(false)
       e.preventDefault()
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-      panRef.current = { startX: e.clientX, startY: e.clientY, tx: zoom.tx, ty: zoom.ty }
+      panRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        tx: zoomRef.current.tx,
+        ty: zoomRef.current.ty,
+      }
     }
   }
 
@@ -452,30 +473,30 @@ export default function MangaViewer({
         const cx = (pts[0].x + pts[1].x) / 2
         const cy = (pts[0].y + pts[1].y) / 2
         if (dist > 0) {
-          setZoom((z) => {
-            const scale = Math.min(4, Math.max(1, pinch.scale * (dist / pinch.dist)))
-            const stage = stageRef.current
-            const inner = stageInnerRef.current
-            const img = imgRef.current
-            if (!stage || !inner || !img) return z
+          const scale = Math.min(4, Math.max(1, pinch.scale * (dist / pinch.dist)))
+          const stage = stageRef.current
+          const inner = stageInnerRef.current
+          const img = imgRef.current
+          if (stage && inner && img) {
             const w = img.clientWidth
             const h = img.clientHeight
-            if (!w || !h) return z
-            const stageRect = stage.getBoundingClientRect()
-            const innerRect = inner.getBoundingClientRect()
-            const Cx = innerRect.left - stageRect.left + w / 2
-            const Cy = innerRect.top - stageRect.top + h / 2
-            const qx = cx - stageRect.left
-            const qy = cy - stageRect.top
-            const S0 = pinch.scale
-            // 两指中心对应的布局点 p（用起点缩放 / 平移反解）：p = (q - C)/S + (w/2, h/2) - t
-            const px = (qx - Cx) / S0 + w / 2 - pinch.tx
-            const py = (qy - Cy) / S0 + h / 2 - pinch.ty
-            // 缩放后让 p 仍显示在 q：t = (q - C)/S - (p - (w/2, h/2))
-            const tx = (qx - Cx) / scale - (px - w / 2)
-            const ty = (qy - Cy) / scale - (py - h / 2)
-            return { scale, tx, ty }
-          })
+            if (w && h) {
+              const stageRect = stage.getBoundingClientRect()
+              const innerRect = inner.getBoundingClientRect()
+              const Cx = innerRect.left - stageRect.left + w / 2
+              const Cy = innerRect.top - stageRect.top + h / 2
+              const qx = cx - stageRect.left
+              const qy = cy - stageRect.top
+              const S0 = pinch.scale
+              // 两指中心对应的布局点 p（用起点缩放 / 平移反解）：p = (q - C)/S + (w/2, h/2) - t
+              const px = (qx - Cx) / S0 + w / 2 - pinch.tx
+              const py = (qy - Cy) / S0 + h / 2 - pinch.ty
+              // 缩放后让 p 仍显示在 q：t = (q - C)/S - (p - (w/2, h/2))
+              const tx = (qx - Cx) / scale - (px - w / 2)
+              const ty = (qy - Cy) / scale - (py - h / 2)
+              applyZoomLive({ scale, tx, ty })
+            }
+          }
         }
         return
       }
@@ -483,28 +504,37 @@ export default function MangaViewer({
 
     // 单指平移
     const p = panRef.current
-    if (!p || zoom.scale <= 1) return
+    if (!p || zoomRef.current.scale <= 1) return
     const stage = e.currentTarget.getBoundingClientRect()
     const img = imgRef.current
     const w = img?.clientWidth ?? stage.width
     const h = img?.clientHeight ?? stage.height
     // 注意：transform 为 scale(S) translate(tx,ty)，translate 在缩放后的坐标系，
-    // 实际视觉位移 = S*tx，所以边界要除以 S 才能让图片边缘精确贴住舞台边缘
-    const maxX = w * zoom.scale > stage.width ? (w * zoom.scale - stage.width) / (2 * zoom.scale) : 0
-    const maxY = h * zoom.scale > stage.height ? (h * zoom.scale - stage.height) / (2 * zoom.scale) : 0
-    const tx = Math.min(maxX, Math.max(-maxX, p.tx + (e.clientX - p.startX)))
-    const ty = Math.min(maxY, Math.max(-maxY, p.ty + (e.clientY - p.startY)))
-    setZoom((z) => (z.scale <= 1 ? z : { ...z, tx, ty }))
+    // 实际视觉位移 = S*tx，所以手指位移要除以 S 才能 1:1 跟手（不除会放大 S 倍，滑得飞快）
+    const S = zoomRef.current.scale
+    const maxX = w * S > stage.width ? (w * S - stage.width) / (2 * S) : 0
+    const maxY = h * S > stage.height ? (h * S - stage.height) / (2 * S) : 0
+    const tx = Math.min(maxX, Math.max(-maxX, p.tx + (e.clientX - p.startX) / S))
+    const ty = Math.min(maxY, Math.max(-maxY, p.ty + (e.clientY - p.startY) / S))
+    applyZoomLive({ ...zoomRef.current, tx, ty })
   }
 
   function onStagePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    // 手势结束：把最后一次实时缩放同步回 React 状态（transform 一致，无跳变）
+    const z = zoomRef.current
+    if (z.scale !== zoom.scale || z.tx !== zoom.tx || z.ty !== zoom.ty) setZoom({ ...z })
     pointersRef.current.delete(e.pointerId)
     // 少于两指 → 结束捏合
     if (pointersRef.current.size < 2) pinchRef.current = null
     // 还剩一指且处于放大状态：无缝转成单指平移
-    if (pointersRef.current.size === 1 && zoom.scale > 1) {
+    if (pointersRef.current.size === 1 && zoomRef.current.scale > 1) {
       const [pt] = [...pointersRef.current.values()]
-      panRef.current = { startX: pt.x, startY: pt.y, tx: zoom.tx, ty: zoom.ty }
+      panRef.current = {
+        startX: pt.x,
+        startY: pt.y,
+        tx: zoomRef.current.tx,
+        ty: zoomRef.current.ty,
+      }
     } else {
       panRef.current = null
     }
