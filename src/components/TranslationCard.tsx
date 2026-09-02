@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import type { AnimationEvent } from 'react'
 import type { LocalTranslateResult } from '../lib/types'
 
@@ -21,6 +22,40 @@ export default function TranslationCard({
   leaving,
   onAnimationEnd,
 }: Props) {
+  // 复制原文：点击后短暂显示“已复制”
+  const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(copyTimerRef.current), [])
+
+  const handleCopy = async () => {
+    if (!result.text) return
+    const done = () => {
+      setCopied(true)
+      window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1500)
+    }
+    try {
+      await navigator.clipboard.writeText(result.text)
+      done()
+    } catch {
+      // 非 https / 老环境降级：隐藏 textarea + execCommand
+      const ta = document.createElement('textarea')
+      ta.value = result.text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      try {
+        document.execCommand('copy')
+        done()
+      } catch {
+        /* 复制失败不打扰 */
+      } finally {
+        document.body.removeChild(ta)
+      }
+    }
+  }
+
   return (
     <div
       className={`result-card${leaving ? ' leaving' : ''}`}
@@ -31,6 +66,17 @@ export default function TranslationCard({
           关闭
         </button>
       </div>
+      {result.text && (
+        <div className="result-ref">
+          <button
+            className={`copy-btn${copied ? ' copied' : ''}`}
+            onClick={handleCopy}
+            title="复制日文原文"
+          >
+            {copied ? '已复制' : '复制原文'}
+          </button>
+        </div>
+      )}
       {result.text && <div className="result-orig">{result.text}</div>}
       <div className="result-trans">{result.translated || '（未识别到译文）'}</div>
       {(result.grammar || result.words) && (

@@ -686,6 +686,35 @@ button {
   align-self: center;
 }
 
+/* 复制原文按钮（白色，位于原文上方） */
+.result-ref {
+  margin-bottom: 8px;
+}
+
+.copy-btn {
+  background: #fff;
+  color: #1f2328;
+  border: 1px solid #d0d7de;
+  padding: 2px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-btn:hover {
+  background: #f6f8fa;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.copy-btn.copied {
+  background: #dafbe1;
+  border-color: #2da44e;
+  color: #1a7f37;
+}
+
 /* 日语 / 中文纯文本 */
 .result-orig {
   font-size: 17px;
