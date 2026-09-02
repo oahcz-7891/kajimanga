@@ -15,7 +15,10 @@ export default function PageJump({ current, total, onChange }: Props) {
   useEffect(() => {
     if (editing) {
       setDraft(String(current))
-      inputRef.current?.select()
+      // iOS：先 focus 激活焦点/键盘，再在下一帧 select 全选（直接把 select 放同帧可能失效）
+      const input = inputRef.current
+      input?.focus()
+      requestAnimationFrame(() => input?.select())
     }
   }, [editing, current])
 
@@ -32,11 +35,12 @@ export default function PageJump({ current, total, onChange }: Props) {
       <input
         ref={inputRef}
         className="page-jump-input"
-        type="number"
-        min={1}
-        max={total}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={5}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') setEditing(false)
