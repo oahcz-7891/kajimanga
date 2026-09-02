@@ -410,6 +410,9 @@ export default function MangaViewer({
 
   function onStagePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (selectionActive || !doubleTapZoom) return
+    // 浮层 UI（译文卡/翻译中卡/报错卡/翻页热区）：直接放行给按钮触发 click，
+    // 不进入缩放/平移/双击逻辑，避免放大状态下 stage 劫持指针导致按钮失效
+    if ((e.target as HTMLElement).closest?.('.hotzone, .result-card, .translating-card, .trans-error')) return
     // 记录活动指针
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
