@@ -665,6 +665,11 @@ button {
   margin-bottom: 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border-muted);
+  /* 翻译卡片滚动时头部吸顶，背景与卡片一致遮挡下方内容 */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #ffffff;
 }
 
 .badge {
