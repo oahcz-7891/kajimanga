@@ -708,18 +708,6 @@ button {
   white-space: nowrap;
 }
 
-.copy-btn:hover {
-  background: #f6f8fa;
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.copy-btn.copied {
-  background: #dafbe1;
-  border-color: #2da44e;
-  color: #1a7f37;
-}
-
 /* 日语 / 中文纯文本 */
 .result-orig {
   font-size: 17px;
