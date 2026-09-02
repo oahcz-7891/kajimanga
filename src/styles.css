@@ -730,12 +730,19 @@ button {
   border-top: 1px solid var(--border-muted);
 }
 
-/* 译文卡片底部右侧：重新识图并翻译 / 重新翻译（黑色小按钮，不用分隔条） */
+/* 译文卡片底部：重新识图并翻译 / 重新翻译（黑色小按钮，不用分隔条）
+   固定在卡片最底部：负 margin 抵消卡片 22px/26px padding，自补 padding 铺满整行，
+   滚动内容从按钮上方穿过 */
 .result-actions {
-  margin-top: 14px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  margin: 14px -26px -22px;
+  padding: 14px 26px 22px;
+  background: #ffffff;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
 }
 
 .result-actions .btn {
