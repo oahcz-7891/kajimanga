@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { BookIcon } from '@primer/octicons-react'
 import { cropImageToDataUrl } from '../lib/crop'
+import { blockHashFromImage, buildPageKey } from '../lib/translationCache'
 import type { CachedComic } from '../lib/readingCache'
-import type { DisplayRect, LocalTranslateResult } from '../lib/types'
+import type { DisplayRect, LocalTranslateResult, TransPhase } from '../lib/types'
 import TranslationCard from './TranslationCard'
 
 interface MangaViewerProps {
@@ -13,7 +14,7 @@ interface MangaViewerProps {
   /** 每次打开新漫画/拖入新图片时递增，触发缩放等临时状态重置 */
   resetToken: number
   selectionActive: boolean
-  translating: boolean
+  phase: TransPhase
   result: LocalTranslateResult | null
   error: string | null
   shelf: CachedComic[]
@@ -22,11 +23,13 @@ interface MangaViewerProps {
   doubleTapRatio: number
   onContinue: (comic: CachedComic) => void
   onDelete: (id: string) => void
-  onCrop: (dataUrl: string, rect: DisplayRect) => void
+  onCrop: (dataUrl: string, rect: DisplayRect, pageKey?: string) => void
   onDismiss: () => void
   onErrorDismiss: () => void
-  /** 译文卡片“重新翻译”：不查缓存强制走 API */
-  onRetranslate: () => void
+  /** 译文卡片“重新识图并翻译”：重新识别（重发图）+ 重新翻译，跳过缓存 */
+  onRetranslateFull: () => void
+  /** 译文卡片“重新翻译”：仅用当前识别文本重新翻译，不重新识图 */
+  onRetranslateText: () => void
   onCancelTranslate: () => void
   onEmptyImport: () => void
   onPrev: () => void
@@ -38,7 +41,7 @@ export default function MangaViewer({
   pageIndex,
   resetToken,
   selectionActive,
-  translating,
+  phase,
   result,
   error,
   shelf,
@@ -50,7 +53,8 @@ export default function MangaViewer({
   onCrop,
   onDismiss,
   onErrorDismiss,
-  onRetranslate,
+  onRetranslateFull,
+  onRetranslateText,
   onCancelTranslate,
   onEmptyImport,
   onPrev,
@@ -142,14 +146,14 @@ export default function MangaViewer({
 
   // 错误出现时：显示卡片并启动 5s 自动关闭；错误清除/翻译开始时重置
   useEffect(() => {
-    if (!error || translating) return
+    if (!error || phase !== 'idle') return
     setErrorVisible(true)
     setErrorLeaving(false)
     window.clearTimeout(errorTimerRef.current)
     errorTimerRef.current = window.setTimeout(dismissError, 5000)
     return () => window.clearTimeout(errorTimerRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [error, translating])
+  }, [error, phase])
 
   useEffect(() => {
     return () => window.clearTimeout(errorTimerRef.current)
@@ -173,6 +177,8 @@ export default function MangaViewer({
   }, [])
 
   const imgRef = useRef<HTMLImageElement>(null)
+  // 整页 128-bit blockhash 缓存（src → hash），同一页多次框选不重算
+  const pageHashCacheRef = useRef(new Map<string, string>())
   const stageRef = useRef<HTMLDivElement>(null)
   const stageInnerRef = useRef<HTMLDivElement>(null)
   const startRef = useRef<{ x: number; y: number } | null>(null)
@@ -350,9 +356,28 @@ export default function MangaViewer({
     const s = startRef.current
     startRef.current = null
     if (s && box && box.width >= 8 && box.height >= 8 && imgRef.current) {
+      const img = imgRef.current
       const rect = toImageRect(box)
-      const dataUrl = cropImageToDataUrl(imgRef.current, rect)
-      if (dataUrl) onCrop(dataUrl, rect)
+      const dataUrl = cropImageToDataUrl(img, rect)
+      if (dataUrl) {
+        // 精确层匹配键：整页 hash + 归一化 rect；失败则退回模糊层（pageKey 缺省）
+        let pageKey: string | undefined
+        try {
+          const iw = img.clientWidth
+          const ih = img.clientHeight
+          if (iw && ih) {
+            let pageHash = pageHashCacheRef.current.get(src ?? '')
+            if (!pageHash) {
+              pageHash = blockHashFromImage(img)
+              pageHashCacheRef.current.set(src ?? '', pageHash)
+            }
+            pageKey = buildPageKey(pageHash, rect, iw, ih)
+          }
+        } catch {
+          pageKey = undefined
+        }
+        onCrop(dataUrl, rect, pageKey)
+      }
     }
     setBox(null)
   }
@@ -540,15 +565,18 @@ export default function MangaViewer({
             />
           </div>
 
-          {translating && (
+          {phase !== 'idle' && (
             <div className="translating-card">
-              <button className="close-btn" onClick={onCancelTranslate} title="取消翻译">
-                取消翻译
+              <span className="translating-tip">
+                {phase === 'recognizing' ? '识别中…' : '翻译中…'}
+              </span>
+              <button className="close-btn" onClick={onCancelTranslate} title="取消">
+                取消
               </button>
             </div>
           )}
 
-          {result && !translating && (
+          {result && phase === 'idle' && (
             <TranslationCard
               result={{ ...result, rect: toViewportRect(result.rect) }}
               leaving={resultLeaving}
@@ -559,10 +587,11 @@ export default function MangaViewer({
                 }
               }}
               onClose={closeResultCard}
-              onRetranslate={onRetranslate}
+              onRetranslateFull={onRetranslateFull}
+              onRetranslateText={onRetranslateText}
             />
           )}
-          {error && !translating && errorVisible && (
+          {error && phase === 'idle' && errorVisible && (
             <div
               className={`trans-error${errorLeaving ? ' leaving' : ''}`}
               onAnimationEnd={(e) => {

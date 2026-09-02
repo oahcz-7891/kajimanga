@@ -18,8 +18,23 @@ export interface TranslateResult {
   words?: string
 }
 
+/** OCR 步骤的结果：只识别日文原文，不翻译 */
+export interface OcrResult {
+  text: string
+}
+
+/** 翻译步骤的结果：只翻译已识别文本，不再识图 */
+export interface TranslateTextResult {
+  translated: string
+  grammar?: string
+  words?: string
+}
+
 /** 阅读 / 翻译模式 */
 export type ReadMode = 'translate' | 'learn'
+
+/** 识图 / 翻译两步流程的进行状态 */
+export type TransPhase = 'idle' | 'recognizing' | 'translating'
 
 /** 全局应用设置（不区分服务商） */
 export interface AppSettings {
@@ -58,7 +73,12 @@ export interface DisplayRect {
 
 export type LocalTranslateResult = TranslateResult & {
   rect: DisplayRect
-  fromCache?: boolean
-  /** 命中缓存时，本张图按尺寸估算的图像 token 节省量（约值） */
-  savedTokens?: number
+  /** 本次识图（OCR）请求的输入 token（含图像 token）；缓存命中时缺省（= 0） */
+  ocrPromptTokens?: number
+  /** 本次识图（OCR）请求的输出 token；缓存命中时缺省（= 0） */
+  ocrCompletionTokens?: number
+  /** 本次翻译请求的输入 token；缓存命中时缺省（= 0） */
+  translatePromptTokens?: number
+  /** 本次翻译请求的输出 token；缓存命中时缺省（= 0） */
+  translateCompletionTokens?: number
 }

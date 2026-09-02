@@ -5,7 +5,7 @@ import MangaViewer from './components/MangaViewer'
 import PageJump from './components/PageJump'
 import SettingsModal from './components/SettingsModal'
 import SettingsPage from './components/SettingsPage'
-import { PROVIDERS, PROVIDER_THINKING, createDefaultConfigs, translateImage } from './lib/visionApi'
+import { PROVIDERS, PROVIDER_THINKING, createDefaultConfigs, ocrImage, translateText } from './lib/visionApi'
 import {
   importManga,
   isPdf,
@@ -100,7 +100,8 @@ export default function App() {
   const [pages, setPages] = useState<string[]>([])
   const [pageIndex, setPageIndex] = useState(0)
   const [selectionActive, setSelectionActive] = useState(false)
-  const [translating, setTranslating] = useState(false)
+  /** 两步流程进行状态：idle=无 / recognizing=识别中 / translating=翻译中 */
+  const [phase, setPhase] = useState<'idle' | 'recognizing' | 'translating'>('idle')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [shelf, setShelf] = useState<CachedComic[]>([])
@@ -337,6 +338,7 @@ export default function App() {
         setCurrentId(null)
         setResult(null)
         setError(null)
+        setPhase('idle')
         setSelectionActive(false)
         setImportError(null)
         setReaderMounted(false)
@@ -345,11 +347,23 @@ export default function App() {
     [readerIn, pages],
   )
 
-  // 最近一次裁剪，供“重新翻译”复用（不必重新框选）
-  const lastCropRef = useRef<{ dataUrl: string; rect: DisplayRect } | null>(null)
+  // 最近一次裁剪 + 识别文本，供「重新识图并翻译」「重新翻译」复用
+  const lastCropRef = useRef<{
+    dataUrl: string
+    rect: DisplayRect
+    text?: string
+    pageKey?: string
+  } | null>(null)
 
+  // 两步翻译主流程：框选后先识别（OCR），再翻译（纯文本）
   const doTranslate = useCallback(
-    async (dataUrl: string, rect: DisplayRect, forceRefresh: boolean) => {
+    async (
+      dataUrl: string,
+      rect: DisplayRect,
+      forceRefresh: boolean,
+      pageKey?: string,
+    ) => {
+      lastCropRef.current = { dataUrl, rect, pageKey }
       setSelectionActive(false)
       const settings = configs[provider]
       if (!settings.apiKey) {
@@ -362,19 +376,46 @@ export default function App() {
       }
       const controller = new AbortController()
       translateAbortRef.current = controller
-      setTranslating(true)
       setResult(null)
       setError(null)
       try {
-        const r = await translateImage(
+        // 第一步：识别（OCR），发图只取日文原文
+        setPhase('recognizing')
+        const ocr = await ocrImage(
           provider,
           settings,
           dataUrl,
+          controller.signal,
+          forceRefresh,
+          pageKey,
+        )
+        const text = String(ocr.text ?? '').trim()
+        if (!text) {
+          setError('未识别到文字，请重新框选')
+          return
+        }
+        lastCropRef.current = { dataUrl, rect, text }
+        // 第二步：翻译（纯文本，不再发图）
+        setPhase('translating')
+        const tr = await translateText(
+          provider,
+          settings,
+          text,
           appSettings.mode,
           controller.signal,
           forceRefresh,
         )
-        setResult({ ...r, rect })
+        setResult({
+          text,
+          translated: tr.translated,
+          grammar: tr.grammar,
+          words: tr.words,
+          rect,
+          ocrPromptTokens: ocr.promptTokens,
+          ocrCompletionTokens: ocr.completionTokens,
+          translatePromptTokens: tr.promptTokens,
+          translateCompletionTokens: tr.completionTokens,
+        })
       } catch (e) {
         // 用户主动取消翻译：不弹错误
         if (!controller.signal.aborted) {
@@ -382,31 +423,76 @@ export default function App() {
         }
       } finally {
         if (translateAbortRef.current === controller) translateAbortRef.current = null
-        setTranslating(false)
+        setPhase('idle')
       }
     },
     [configs, provider, appSettings.mode],
   )
 
   const handleCrop = useCallback(
-    async (dataUrl: string, rect: DisplayRect) => {
-      lastCropRef.current = { dataUrl, rect }
-      await doTranslate(dataUrl, rect, false)
+    async (dataUrl: string, rect: DisplayRect, pageKey?: string) => {
+      await doTranslate(dataUrl, rect, false, pageKey)
     },
     [doTranslate],
   )
 
-  // 重新翻译：不查缓存，强制走 API，成功后照常写缓存
-  const handleRetranslate = useCallback(() => {
+  // 重新识图并翻译：重新识别（重发图）+ 重新翻译，两步都跳过缓存
+  const handleRetranslateFull = useCallback(() => {
     const last = lastCropRef.current
-    if (last) void doTranslate(last.dataUrl, last.rect, true)
+    if (last) void doTranslate(last.dataUrl, last.rect, true, last.pageKey)
   }, [doTranslate])
+
+  // 重新翻译：仅用当前识别文本重新翻译（跳过翻译缓存），不重新识图
+  const handleRetranslateText = useCallback(() => {
+    const last = lastCropRef.current
+    const text = last?.text
+    if (!text) {
+      // 无识别文本兜底：走完整重跑
+      handleRetranslateFull()
+      return
+    }
+    const settings = configs[provider]
+    if (!settings.apiKey) {
+      setError('请先在设置里填写 API Key')
+      return
+    }
+    if (!settings.model) {
+      setError('请先在设置里填写模型名')
+      return
+    }
+    const controller = new AbortController()
+    translateAbortRef.current = controller
+    setResult(null)
+    setError(null)
+    setPhase('translating')
+    void translateText(provider, settings, text, appSettings.mode, controller.signal, true)
+      .then((tr) => {
+        setResult({
+          text,
+          translated: tr.translated,
+          grammar: tr.grammar,
+          words: tr.words,
+          rect: last.rect,
+          translatePromptTokens: tr.promptTokens,
+          translateCompletionTokens: tr.completionTokens,
+        })
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) {
+          setError(e instanceof Error ? e.message : String(e))
+        }
+      })
+      .finally(() => {
+        if (translateAbortRef.current === controller) translateAbortRef.current = null
+        setPhase('idle')
+      })
+  }, [configs, provider, appSettings.mode, handleRetranslateFull])
 
   // 取消翻译：中断进行中的请求
   const handleCancelTranslate = useCallback(() => {
     translateAbortRef.current?.abort()
     translateAbortRef.current = null
-    setTranslating(false)
+    setPhase('idle')
     setSelectionActive(false)
   }, [])
 
@@ -431,7 +517,7 @@ export default function App() {
           pageIndex={0}
           totalPages={0}
           selectionActive={false}
-          translating={false}
+          phase={'idle'}
           onTranslate={handleTranslate}
           onPrev={prev}
           onNext={next}
@@ -446,7 +532,7 @@ export default function App() {
           pageIndex={0}
           resetToken={0}
           selectionActive={false}
-          translating={false}
+          phase={'idle'}
           result={null}
           error={null}
           shelf={shelf}
@@ -458,7 +544,8 @@ export default function App() {
           onCrop={handleCrop}
           onDismiss={handleDismiss}
           onErrorDismiss={handleErrorDismiss}
-          onRetranslate={handleRetranslate}
+          onRetranslateFull={handleRetranslateFull}
+          onRetranslateText={handleRetranslateText}
           onCancelTranslate={handleCancelTranslate}
           onEmptyImport={() => archiveInputRef.current?.click()}
           onPrev={prev}
@@ -489,7 +576,7 @@ export default function App() {
             pageIndex={pageIndex}
             totalPages={pages.length}
             selectionActive={selectionActive}
-            translating={translating}
+            phase={phase}
             onTranslate={handleTranslate}
             onPrev={prev}
             onNext={next}
@@ -504,7 +591,7 @@ export default function App() {
             pageIndex={pageIndex}
             resetToken={readerNonce}
             selectionActive={selectionActive}
-            translating={translating}
+            phase={phase}
             result={result}
             error={error}
             shelf={shelf}
@@ -516,7 +603,8 @@ export default function App() {
             onCrop={handleCrop}
             onDismiss={handleDismiss}
             onErrorDismiss={handleErrorDismiss}
-            onRetranslate={handleRetranslate}
+            onRetranslateFull={handleRetranslateFull}
+            onRetranslateText={handleRetranslateText}
             onCancelTranslate={handleCancelTranslate}
             onEmptyImport={() => archiveInputRef.current?.click()}
             onPrev={prev}

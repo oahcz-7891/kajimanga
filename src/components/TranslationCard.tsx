@@ -4,14 +4,23 @@ import type { LocalTranslateResult } from '../lib/types'
 interface Props {
   result: LocalTranslateResult
   onClose: () => void
-  /** 点击“重新翻译”：不查缓存，强制走 API，成功后照常写缓存 */
-  onRetranslate: () => void
+  /** 点击“重新识图并翻译”：重新识别（重发图）+ 重新翻译，跳过缓存 */
+  onRetranslateFull: () => void
+  /** 点击“重新翻译”：仅用当前识别文本重新翻译，不重新识图 */
+  onRetranslateText: () => void
   /** 是否正在退场动画中（关闭时由父级传入，播完再真正卸载） */
   leaving?: boolean
   onAnimationEnd?: (e: AnimationEvent<HTMLDivElement>) => void
 }
 
-export default function TranslationCard({ result, onClose, onRetranslate, leaving, onAnimationEnd }: Props) {
+export default function TranslationCard({
+  result,
+  onClose,
+  onRetranslateFull,
+  onRetranslateText,
+  leaving,
+  onAnimationEnd,
+}: Props) {
   return (
     <div
       className={`result-card${leaving ? ' leaving' : ''}`}
@@ -41,11 +50,31 @@ export default function TranslationCard({ result, onClose, onRetranslate, leavin
           )}
         </div>
       )}
-      {result.fromCache && result.savedTokens != null && (
-        <div className="result-cache">本地缓存命中约 {result.savedTokens} token</div>
-      )}
+      <div className="result-tokens">
+        <div className="token-row">
+          <span className="token-label">识图</span>
+          <span>
+            输入 <b>{result.ocrPromptTokens ?? 0}</b>
+          </span>
+          <span>
+            输出 <b>{result.ocrCompletionTokens ?? 0}</b>
+          </span>
+        </div>
+        <div className="token-row">
+          <span className="token-label">翻译</span>
+          <span>
+            输入 <b>{result.translatePromptTokens ?? 0}</b>
+          </span>
+          <span>
+            输出 <b>{result.translateCompletionTokens ?? 0}</b>
+          </span>
+        </div>
+      </div>
       <div className="result-actions">
-        <button className="btn" onClick={onRetranslate}>
+        <button className="btn" onClick={onRetranslateFull} title="重新识别并翻译（跳过缓存）">
+          重新识图并翻译
+        </button>
+        <button className="btn" onClick={onRetranslateText} title="用当前识别文本重新翻译">
           重新翻译
         </button>
       </div>

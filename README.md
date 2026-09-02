@@ -49,7 +49,7 @@ Drag archives / PDFs into the window or click "Import" to pick files. Page cover
 | 点击顶栏 / 底部导航按钮 Toolbar / bottom nav buttons | 翻页 Turn page |
 | 双击页面中央 Double-tap the center | 放大 / 还原 Zoom in / reset (ratio configurable) |
 | 放大后拖动 Drag while zoomed | 平移 Pan |
-| 点击「翻译」Tap "Translate" | 进入框选模式 Enter selection mode and drag a region |
+| 点击「识图」Tap "OCR" | 进入框选模式 Enter selection mode and drag a region |
 
 翻页动画为推页式滑动；缩放状态只对当前页有效，翻页后自动恢复。
 
@@ -57,16 +57,21 @@ Page turns use a sliding animation; zoom applies to the current page only and re
 
 ### 翻译 Translation
 
-1. 点击顶栏「翻译」进入框选模式 — Tap "Translate" to enter selection mode
-2. 在页面上拖出要翻译的文字区域（支持缩放状态下框选）— Drag over the text you want translated (works while zoomed)
-3. 松手后自动裁剪该区域并调用视觉模型 — The region is cropped and sent to the vision model
-4. 识别结果以译文卡片形式显示在选区旁 — Results appear in a card next to the selection
+识图与翻译分两步执行，框选后自动依次完成：
 
-支持的服务商（OpenAI 兼容接口）：DeepSeek、Qwen（DashScope）、Kimi（Moonshot）、自定义。每个服务商可独立配置 `baseUrl / API Key / 模型名 / 思考档位`，支持「测试连接」。
+1. 点击顶栏「识图」进入框选模式 — Tap "OCR" to enter selection mode
+2. 在页面上拖出要翻译的文字区域（支持缩放状态下框选）— Drag over the text you want translated (works while zoomed)
+3. 松手后自动裁剪并调用视觉模型识别日文原文（第一步）— The region is cropped and sent to the vision model for OCR (step 1)
+4. 识别完成后文本自动翻译为简体中文（第二步，纯文本请求，不再携带图片）— The recognized text is then translated to simplified Chinese (step 2, text-only request)
+5. 结果显示在选区旁的译文卡片中 — Results appear in a card next to the selection
+
+结果卡操作 — Card actions:「重新识图并翻译」= 重新识别 + 重新翻译（两步重新执行）；「重新翻译」= 仅用当前识别文本重新翻译（不重复识图）。识别结果采用两级本地缓存：**精确层**（整页 blockhash + 归一化选区，同页同区域零误判命中）+ **模糊层**（裁剪图 128-bit blockhash 容差匹配，容忍重截图 / 压缩差异，BK-tree 索引加速检索），命中即省掉图像请求；翻译结果按原文文本缓存。
+
+支持的服务商（OpenAI 兼容接口）：DeepSeek、Qwen（DashScope）、Kimi（Moonshot）、自定义。每个服务商可独立配置 `baseUrl / API Key / 模型名 / 思考档位`，支持「测试连接」。识别步骤需要视觉模型；翻译步骤为纯文本请求，纯文本模型（如 DeepSeek）也可用于翻译。
 
 Supported providers (OpenAI-compatible): DeepSeek, Qwen (DashScope), Kimi (Moonshot), and custom. Each provider has its own `baseUrl / API Key / model / thinking level`, with a "test connection" option.
 
-翻译模式分为「翻译」与「学习」：翻译返回日文原文与中文译文；学习额外返回语法说明与单词 / 短语释义。
+翻译模式分为「翻译」与「学习」：翻译返回中文译文；学习额外返回语法说明与单词 / 短语释义。
 
 Two modes: "Translate" returns the Japanese text and Chinese translation; "Learn" additionally returns grammar notes and word/phrase explanations.
 
@@ -113,7 +118,7 @@ src/
 ## 隐私说明 Privacy
 
 - 所有数据保存在本地浏览器：漫画文件、书架、阅读进度均不出本机 — All data (comics, bookshelf, progress) stays in your browser
-- 只有框选出的那一小块图片会发送到你配置的服务商 API 用于识别和翻译，页面整体不会上传 — Only the small cropped region is sent to your configured provider for OCR/translation; the full page is never uploaded
+- 只有框选出的那一小块图片会发送到你配置的服务商 API 用于识别日文，翻译步骤只发送纯文本（识别出的原文），页面整体不会上传 — Only the small cropped region is sent to your provider for OCR; the translation step sends text only. The full page is never uploaded
 - API Key 仅存储在浏览器 localStorage — API keys are stored only in browser localStorage
 
 ## 开发脚本 Scripts

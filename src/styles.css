@@ -554,6 +554,14 @@ button {
   animation: translating-card-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* 翻译中卡片的提示文字（识别中… / 翻译中…） */
+.translating-tip {
+  margin-right: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* 翻译中卡片的按钮单独放大（不影响其它卡片） */
 .translating-card .close-btn {
   padding: 9px 22px;
@@ -698,32 +706,12 @@ button {
   border-top: 1px solid var(--border-muted);
 }
 
-/* 译文卡片底部：本地缓存命中提示 */
-.result-cache {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-muted);
-  font-size: 12px;
-  color: var(--fg-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.result-cache::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.8;
-}
-
-/* 译文卡片底部右侧：重新翻译（黑色小按钮，不用分隔条） */
+/* 译文卡片底部右侧：重新识图并翻译 / 重新翻译（黑色小按钮，不用分隔条） */
 .result-actions {
   margin-top: 14px;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .result-actions .btn {
@@ -736,6 +724,36 @@ button {
 
 .result-actions .btn:hover {
   background: #2b2b2b;
+}
+
+/* 译文卡片底部：识图 / 翻译 token 消耗（输入 / 输出两行，按钮上方） */
+.result-tokens {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-muted);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.token-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.token-row + .token-row {
+  margin-top: 4px;
+}
+
+.token-label {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.token-row b {
+  color: var(--fg);
+  font-weight: 600;
+  margin-left: 2px;
 }
 
 .learn-title {

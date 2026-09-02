@@ -1,9 +1,15 @@
-import type { ProviderKey, ProviderSettings, ReadMode, TranslateResult } from './types'
+import type { DisplayRect, ProviderKey, ProviderSettings, ReadMode, TranslateResult } from './types'
+
+/** 缓存步骤：ocr = 图片→原文；translate = 原文→译文 */
+export type CacheStep = 'ocr' | 'translate'
 
 /**
- * 翻译结果本地缓存（方案1：感知哈希 + 容差）。
- * 关键点：同一片文字、但裁剪/缩放/压缩略有差异的截图，用 dHash 比较 Hamming 距离，
- * 距离 ≤ 阈值即视为命中，从而跳过图像请求，省掉重复的「图像 token」。
+ * OCR 图片缓存（两级）：
+ *  1. 精确层：整页 128-bit blockhash + 归一化选区 rect → 同页同区域确定性命中，零误判
+ *  2. 模糊层：裁剪图 128-bit blockhash（blockhash.io 算法），Hamming ≤ 容差命中，
+ *     容忍同一片文字因压缩/重截图导致的细微差异
+ * 检索结构：按 params 分桶维护内存 BK-tree（Hamming 最近邻），写入增量更新，
+ *           首次查询时从 IndexedDB 懒构建，替代全表线性扫描。
  */
 
 const DB_NAME = 'kajimanga-cache'
@@ -11,14 +17,20 @@ const STORE = 'translation'
 
 /** 缓存条目有效期：30 天 */
 export const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
-/** dHash Hamming 距离阈值，越小越严格。漫画小字建议 6~10，需要实测 */
-export const CACHE_TOLERANCE = 8
+/** 128-bit blockhash 的 Hamming 距离阈值。
+ * 实测（白底黑字的文字块）：不同内容/不同区域最小距离 3~7；
+ * 同一区域因 24px 网格对齐重裁图几乎一致（距离 0~1）。
+ * 因此取 2：只容忍同内容/同区域的细微差异，绝不把不同区域误判命中；
+ * 宁可多走一次 API，也不返回错误结果。 */
+export const BLOCKHASH_TOLERANCE = 2
+/** blockhash 输出为 32 位 hex（128 bit），树索引据此过滤非模糊条目 */
+const HASH_HEX_LEN = 32
 
 interface CacheEntry {
   id: string
   /** 请求参数（provider/baseUrl/model/thinking/mode），用于隔离不同服务的缓存 */
   params: string
-  /** 64 位 dHash，0/1 字符串 */
+  /** 匹配键：OCR 模糊=裁剪图 blockhash / OCR 精确=pageKey / 翻译=原文全文 */
   hash: string
   result: TranslateResult
   createdAt: number
@@ -38,13 +50,15 @@ function openDb(): Promise<IDBDatabase> {
   })
 }
 
-/** 请求参数 → 缓存 params 字符串（JSON 编码，避免分隔符冲突） */
+/** 请求参数 → 缓存 params 字符串（JSON 编码，避免分隔符冲突）
+ * step 区分 OCR / 翻译两类缓存；翻译带 mode 隔离学习模式 */
 export function buildParams(
   provider: ProviderKey,
   settings: ProviderSettings,
-  mode: ReadMode,
+  step: CacheStep,
+  mode?: ReadMode,
 ): string {
-  return JSON.stringify([provider, settings.baseUrl, settings.model, settings.thinking, mode])
+  return JSON.stringify([provider, settings.baseUrl, settings.model, settings.thinking, step, mode ?? null])
 }
 
 /** 清空全部翻译缓存 */
@@ -76,60 +90,173 @@ function readAll(db: IDBDatabase): Promise<CacheEntry[]> {
   })
 }
 
-function hamming(a: string, b: string): number {
-  let dist = 0
-  const n = Math.min(a.length, b.length)
-  for (let i = 0; i < n; i++) if (a[i] !== b[i]) dist++
-  return dist
+// ---------- 128-bit blockhash（blockhash.io 实现，method=2） ----------
+
+const LUMINANCE_R = 0.299
+const LUMINANCE_G = 0.587
+const LUMINANCE_B = 0.114
+
+/**
+ * 从已解码的图片元素计算 128-bit blockhash（32 位 hex）。
+ * 原理：缩放到 16×16 亮度网格，每行 16 格分成 8 组（每组左右两块），
+ * 比较块均值得到 8bit/行 × 16 行 = 128 bit。对缩放、JPEG 重压缩、亮度变化鲁棒。
+ * 同步执行（Canvas 缩放 + getImageData），适合在框选回调中直接调用。
+ */
+export function blockHashFromImage(img: HTMLImageElement, bits = 16, sub = 2): string {
+  if (!img.naturalWidth || !img.naturalHeight) throw new Error('图片未加载')
+  const size = bits * sub
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('无法获取 canvas')
+  ctx.drawImage(img, 0, 0, size, size)
+  const { data } = ctx.getImageData(0, 0, size, size)
+
+  // 每格 sub×sub 采样点的平均亮度（灰度）
+  const cells: number[] = []
+  for (let y = 0; y < bits; y++) {
+    for (let x = 0; x < bits; x++) {
+      let sum = 0
+      for (let dy = 0; dy < sub; dy++) {
+        for (let dx = 0; dx < sub; dx++) {
+          const i = ((y * sub + dy) * size + (x * sub + dx)) * 4
+          sum += LUMINANCE_R * data[i] + LUMINANCE_G * data[i + 1] + LUMINANCE_B * data[i + 2]
+        }
+      }
+      cells.push(sum / (sub * sub))
+    }
+  }
+
+  // 每行 bits 格 → bits/2 组，组内左半均值 > 右半均值记 1
+  const groupSize = bits / 2
+  let hex = ''
+  for (let y = 0; y < bits; y++) {
+    let byte = 0
+    for (let g = 0; g < bits / groupSize; g++) {
+      let left = 0
+      let right = 0
+      for (let k = 0; k < groupSize / 2; k++) {
+        left += cells[y * bits + g * groupSize + k]
+        right += cells[y * bits + g * groupSize + groupSize / 2 + k]
+      }
+      byte = (byte << 1) | (left > right ? 1 : 0)
+    }
+    hex += byte.toString(16).padStart(2, '0')
+  }
+  return hex
 }
 
-/** 命中缓存则返回结果，否则 null */
-export async function getCachedTranslation(
+export interface BlockHashResult {
+  hash: string
+  width: number
+  height: number
+}
+
+/** 解码一张 dataUrl 图片并计算 128-bit blockhash */
+export function computeBlockHash(dataUrl: string): Promise<BlockHashResult> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const hash = blockHashFromImage(img)
+        resolve({ hash, width: img.naturalWidth, height: img.naturalHeight })
+      } catch (e) {
+        reject(e)
+      }
+    }
+    img.onerror = () => reject(new Error('图片解码失败'))
+    img.src = dataUrl
+  })
+}
+
+// ---------- BK-tree（Hamming 距离最近邻检索） ----------
+
+const POPCOUNT = new Array<number>(256).fill(0)
+for (let i = 1; i < 256; i++) POPCOUNT[i] = POPCOUNT[i >> 1] + (i & 1)
+
+/** 两个 hex 字符串的 Hamming 距离（逐 nibble 异或后数 1 位） */
+function hammingHex(a: string, b: string): number {
+  const n = Math.min(a.length, b.length)
+  let d = 0
+  for (let i = 0; i < n; i++) {
+    d += POPCOUNT[parseInt(a[i], 16) ^ parseInt(b[i], 16)]
+  }
+  return d
+}
+
+interface BKNode {
+  hash: string
+  children: Map<number, BKNode>
+}
+
+/** BK 树：支持容差内的 Hamming 最近邻查询，插入 O(log n)，查询剪枝 O(log n + k) */
+class BKTree {
+  private root: BKNode | null = null
+
+  insert(hash: string) {
+    if (!this.root) {
+      this.root = { hash, children: new Map() }
+      return
+    }
+    let node = this.root
+    for (;;) {
+      const d = hammingHex(hash, node.hash)
+      if (d === 0) return
+      const child = node.children.get(d)
+      if (!child) {
+        node.children.set(d, { hash, children: new Map() })
+        return
+      }
+      node = child
+    }
+  }
+
+  /** 返回与 query 距离最近且 ≤ tol 的条目，无则 null */
+  search(query: string, tol: number): { hash: string; dist: number } | null {
+    if (!this.root) return null
+    let best: { hash: string; dist: number } | null = null
+    const stack: BKNode[] = [this.root]
+    while (stack.length) {
+      const node = stack.pop()!
+      const d = hammingHex(query, node.hash)
+      if (d <= tol && (best === null || d < best.dist)) {
+        best = { hash: node.hash, dist: d }
+      }
+      // BK-tree 剪枝：只深入距离在 [d - tol, d + tol] 内的子边
+      for (const [edge, child] of node.children) {
+        if (edge >= d - tol && edge <= d + tol) stack.push(child)
+      }
+    }
+    return best
+  }
+}
+
+/** 每个 params 一棵树（内存常驻），写入时增量 insert，首次查询时从 DB 懒构建 */
+const ocrIndexes = new Map<string, BKTree>()
+
+async function getOcrIndex(params: string): Promise<BKTree> {
+  let tree = ocrIndexes.get(params)
+  if (tree) return tree
+  tree = new BKTree()
+  const db = await openDb()
+  for (const e of await readAll(db)) {
+    // 只索引 128-bit blockhash（32 位 hex）的 OCR 模糊条目；
+    // 精确层 pageKey / 文本缓存（hash 不同长度）不参与模糊匹配
+    if (e.params === params && e.hash.length === HASH_HEX_LEN) tree.insert(e.hash)
+  }
+  ocrIndexes.set(params, tree)
+  return tree
+}
+
+// ---------- 通用读写 ----------
+
+function setCachedEntry(
+  id: string,
   params: string,
   hash: string,
-): Promise<TranslateResult | null> {
-  const db = await openDb()
-  const entries = await readAll(db)
-  const now = Date.now()
-  let best: CacheEntry | null = null
-  let bestDist = Infinity
-  let matchedParams = 0
-  let expired = 0
-  for (const e of entries) {
-    if (e.params !== params) continue
-    matchedParams++
-    if (now - e.createdAt > CACHE_TTL_MS) {
-      expired++
-      continue
-    }
-    const dist = hamming(e.hash, hash)
-    if (dist < bestDist) {
-      bestDist = dist
-      best = e
-    }
-  }
-  // 【临时诊断】定位“未显示命中”问题，定位后可删
-  console.info(
-    '[cache] query params=%s hash=%s | 库内条目=%d params匹配=%d 过期=%d | 最优距离=%s 阈值=%d → %s',
-    params,
-    hash,
-    entries.length,
-    matchedParams,
-    expired,
-    best ? String(bestDist) : '无',
-    CACHE_TOLERANCE,
-    best && bestDist <= CACHE_TOLERANCE ? '命中' : '未命中',
-  )
-  if (best && bestDist <= CACHE_TOLERANCE) {
-    // 命中即视为复用，顺手刷新过期时间
-    void setCachedEntry(best.params, best.hash, best.result)
-    return best.result
-  }
-  return null
-}
-
-function setCachedEntry(params: string, hash: string, result: TranslateResult): Promise<void> {
-  const id = `${params}|${hash}`
+  result: TranslateResult,
+): Promise<void> {
   const entry: CacheEntry = { id, params, hash, result, createdAt: Date.now() }
   return new Promise((resolve, reject) => {
     openDb().then((db) => {
@@ -141,76 +268,101 @@ function setCachedEntry(params: string, hash: string, result: TranslateResult): 
   })
 }
 
-/** 写入 /命中刷新 */
-export function setCachedTranslation(
+/** 按 id 精确读取，校验 params 与 TTL；命中则顺手刷新过期时间 */
+function getById(db: IDBDatabase, id: string, params: string): Promise<CacheEntry | null> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(id)
+    req.onsuccess = () => {
+      const e = req.result as CacheEntry | undefined
+      if (!e || e.params !== params || Date.now() - e.createdAt > CACHE_TTL_MS) {
+        resolve(null)
+        return
+      }
+      void setCachedEntry(e.id, e.params, e.hash, e.result).catch(() => {})
+      resolve(e)
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ---------- OCR 精确层（整页 hash + 归一化 rect） ----------
+
+/**
+ * 生成精确层匹配键：整页 blockhash + 选区相对页面的百分比坐标（1% 精度）。
+ * 同一页同一区域（±1% 内）必然命中同一 key，零误判。
+ */
+export function buildPageKey(pageHash: string, rect: DisplayRect, imgW: number, imgH: number): string {
+  const r = (v: number) => Math.max(0, Math.min(100, Math.round(v * 100)))
+  const rx = r(rect.x / imgW)
+  const ry = r(rect.y / imgH)
+  const rw = r(rect.width / imgW)
+  const rh = r(rect.height / imgH)
+  return `${pageHash}|${rx}|${ry}|${rw}|${rh}`
+}
+
+/** 精确层命中（同页同区域）则返回识别原文，否则 null */
+export async function getCachedOCRExact(
+  params: string,
+  pageKey: string,
+): Promise<TranslateResult | null> {
+  const db = await openDb()
+  const e = await getById(db, `${params}|${pageKey}`, params)
+  return e ? e.result : null
+}
+
+/** 写入精确层缓存 */
+export function setCachedOCRExact(
+  params: string,
+  pageKey: string,
+  text: string,
+): Promise<void> {
+  return setCachedEntry(`${params}|${pageKey}`, params, pageKey, {
+    text,
+  } as TranslateResult)
+}
+
+// ---------- OCR 模糊层（裁剪图 blockhash + BK-tree） ----------
+
+/** 容差内最近命中则返回识别原文，否则 null（查内存 BK-tree，不再全表扫描） */
+export async function getCachedSimilarOCR(
   params: string,
   hash: string,
+): Promise<TranslateResult | null> {
+  const tree = await getOcrIndex(params)
+  const hit = tree.search(hash, BLOCKHASH_TOLERANCE)
+  if (!hit) return null
+  const db = await openDb()
+  const e = await getById(db, `${params}|${hit.hash}`, params)
+  return e ? e.result : null
+}
+
+/** 写入模糊层缓存并增量更新 BK-tree */
+export function setCachedOCRHash(
+  params: string,
+  hash: string,
+  text: string,
+): Promise<void> {
+  ocrIndexes.get(params)?.insert(hash)
+  return setCachedEntry(`${params}|${hash}`, params, hash, { text } as TranslateResult)
+}
+
+// ---------- 翻译文本层（原文→译文，精确匹配） ----------
+
+/** 精确读取原文→译文缓存（翻译步骤，key 即原文全文） */
+export async function getCachedTextTranslation(
+  params: string,
+  text: string,
+): Promise<TranslateResult | null> {
+  const db = await openDb()
+  const e = await getById(db, text, params)
+  return e ? e.result : null
+}
+
+/** 写入原文→译文缓存（翻译步骤） */
+export function setCachedTextTranslation(
+  params: string,
+  text: string,
   result: TranslateResult,
 ): Promise<void> {
-  return setCachedEntry(params, hash, result)
-}
-
-const LUMINANCE_R = 0.299
-const LUMINANCE_G = 0.587
-const LUMINANCE_B = 0.114
-
-/**
- * 按 OpenAI 兼容 high-detail 近似估算一张图的图像 token（约值）。
- * 170 基础 + 85 × 512 分块数；尺寸远小于 2048 的裁剪图直接按实际宽高计。
- */
-export function estimateImageTokens(width: number, height: number): number {
-  return 170 + 85 * Math.ceil(width / 512) * Math.ceil(height / 512)
-}
-
-export interface DHashResult {
-  hash: string
-  width: number
-  height: number
-}
-
-/**
- * 计算一张 dataUrl 图片的 64 位 dHash（0/1 字符串）。
- * 缩放为 9×8 灰度图，逐行比较相邻像素亮度：左>右记为 1。
- * 失败（如非图片）会 reject。
- */
-export function computeDHash(dataUrl: string): Promise<DHashResult> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      try {
-        const W = 9
-        const H = 8
-        const canvas = document.createElement('canvas')
-        canvas.width = W
-        canvas.height = H
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          reject(new Error('无法获取 canvas'))
-          return
-        }
-        ctx.drawImage(img, 0, 0, W, H)
-        const { data } = ctx.getImageData(0, 0, W, H)
-        const gray: number[] = []
-        for (let i = 0; i < W * H; i++) {
-          const r = data[i * 4]
-          const g = data[i * 4 + 1]
-          const b = data[i * 4 + 2]
-          gray.push(LUMINANCE_R * r + LUMINANCE_G * g + LUMINANCE_B * b)
-        }
-        let bits = ''
-        for (let y = 0; y < H; y++) {
-          for (let x = 0; x < W - 1; x++) {
-            const left = gray[y * W + x]
-            const right = gray[y * W + x + 1]
-            bits += left > right ? '1' : '0'
-          }
-        }
-        resolve({ hash: bits, width: img.naturalWidth, height: img.naturalHeight })
-      } catch (e) {
-        reject(e)
-      }
-    }
-    img.onerror = () => reject(new Error('图片解码失败'))
-    img.src = dataUrl
-  })
+  return setCachedEntry(text, params, text, result)
 }

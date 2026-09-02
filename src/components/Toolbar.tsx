@@ -4,6 +4,7 @@ import {
   GearIcon,
   XIcon,
 } from '@primer/octicons-react'
+import type { TransPhase } from '../lib/types'
 import PixelK from './PixelK'
 import PageJump from './PageJump'
 
@@ -12,7 +13,7 @@ interface ToolbarProps {
   pageIndex: number
   totalPages: number
   selectionActive: boolean
-  translating: boolean
+  phase: TransPhase
   onTranslate: () => void
   onPrev: () => void
   onNext: () => void
@@ -28,7 +29,7 @@ export default function Toolbar(props: ToolbarProps) {
     pageIndex,
     totalPages,
     selectionActive,
-    translating,
+    phase,
     onTranslate,
     onPrev,
     onNext,
@@ -87,11 +88,15 @@ export default function Toolbar(props: ToolbarProps) {
             </button>
           ) : (
             <button
-              className={`btn${translating ? '' : ' primary'}`}
+              className={`btn${phase === 'idle' ? ' primary' : ''}`}
               onClick={onTranslate}
-              disabled={translating}
+              disabled={phase !== 'idle'}
             >
-              {translating ? '翻译中…' : '翻译'}
+              {phase === 'recognizing'
+                ? '识图中…'
+                : phase === 'translating'
+                  ? '翻译中…'
+                  : '识图'}
             </button>
           ))}
 
