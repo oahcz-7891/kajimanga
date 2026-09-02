@@ -24,6 +24,12 @@ body,
   margin: 0;
 }
 
+/* 防 iOS 页面级弹性回弹（拖顶部/底部橡皮筋）；内部滚动容器不受影响 */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
     sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
