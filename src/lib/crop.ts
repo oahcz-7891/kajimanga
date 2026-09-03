@@ -3,12 +3,9 @@ import type { DisplayRect } from './types'
 /**
  * 把图片元素中某个矩形区域裁剪出来，返回 JPEG dataURL。
  * rect 为相对图片显示容器的 CSS 坐标。
+ * 不限制输出尺寸（按原分辨率输出），JPEG 最高质量，保留细节提升识别。
  */
-export function cropImageToDataUrl(
-  img: HTMLImageElement,
-  rect: DisplayRect,
-  maxDim = 1024,
-): string | null {
+export function cropImageToDataUrl(img: HTMLImageElement, rect: DisplayRect): string | null {
   const nw = img.naturalWidth
   const nh = img.naturalHeight
   if (!nw || !nh) return null
@@ -41,10 +38,9 @@ export function cropImageToDataUrl(
   sw = Math.max(1, Math.min(ex2, nw) - sx)
   sh = Math.max(1, Math.min(ey2, nh) - sy)
 
-  // 控制输出尺寸，避免请求体积过大
-  const scale = Math.min(1, maxDim / Math.max(sw, sh))
-  const outW = Math.max(1, Math.round(sw * scale))
-  const outH = Math.max(1, Math.round(sh * scale))
+  // 原分辨率输出：不缩放（仅取整到整数像素，canvas 要求）
+  const outW = Math.max(1, Math.round(sw))
+  const outH = Math.max(1, Math.round(sh))
 
   const canvas = document.createElement('canvas')
   canvas.width = outW
@@ -52,5 +48,6 @@ export function cropImageToDataUrl(
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
-  return canvas.toDataURL('image/jpeg', 0.7)
+  // JPEG 最高质量（不压缩）：保留细节提升小选区文字识别
+  return canvas.toDataURL('image/jpeg', 1)
 }
