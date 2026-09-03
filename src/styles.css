@@ -801,7 +801,7 @@ button {
 }
 
 .learn-title {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--fg);
   margin-bottom: 8px;
@@ -814,8 +814,8 @@ button {
 .learn-label {
   display: inline-block;
   margin-bottom: 4px;
-  padding: 1px 8px;
-  font-size: 11px;
+  padding: 2px 10px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--fg);
   background: var(--bg-subtle);
@@ -823,7 +823,7 @@ button {
 }
 
 .learn-content {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--fg);
   line-height: 1.6;
   white-space: pre-wrap;
