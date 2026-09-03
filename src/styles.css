@@ -363,6 +363,11 @@ button {
   transition: transform 0.3s ease;
 }
 
+/* 越界回弹过渡（缩放态松手复位到边界，150ms 轻过渡） */
+.stage img.zoom-bounce {
+  transition: transform 0.15s ease;
+}
+
 /* ---------- 翻页动画（推页式 transition 两帧法：不重建元素，先瞬移到屏幕外再过渡滑入） ---------- */
 .turn-new-wrap {
   position: relative;

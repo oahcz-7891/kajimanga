@@ -7,6 +7,12 @@ import type { CachedComic } from '../lib/readingCache'
 import type { DisplayRect, LocalTranslateResult, TransPhase } from '../lib/types'
 import TranslationCard from './TranslationCard'
 
+/** 手势阈值与手感参数 */
+const HOTZONE_DRAG_PX = 10 // 热区「轻点 vs 滑动」分界（px），超过视为滑动，不再当点击翻页
+const SWIPE_MIN_PX = 60 // 未缩放滑动翻页最小位移（px）
+const EDGE_TURN_PX = 60 // 缩放态越界翻页最小越界量（px）
+const OVERDRAG_DAMP = 0.3 // 越界平移阻尼系数（0~1，越小越“硬”）
+
 interface MangaViewerProps {
   src?: string
   /** 当前页码（用于判断翻页方向） */
@@ -68,6 +74,8 @@ export default function MangaViewer({
   })
   // 双击缩放过渡动画开关（仅双语切换时启用，拖动平移保持即时）
   const [zoomTween, setZoomTween] = useState(false)
+  // 越界回弹过渡开关（缩放态松手复位到边界，150ms 轻过渡）
+  const [zoomBounce, setZoomBounce] = useState(false)
   // 翻页动画：turn 记录旧页与方向（1=下一页从右滑入，-1=上一页从左滑入）
   // animOn 两帧法：翻页先无过渡瞬移到屏幕外（start 类，图片借机解码），下一帧再加过渡类滑入（enter 类）
   const [turn, setTurn] = useState<{ from: string; dir: -1 | 1 } | null>(null)
@@ -184,8 +192,18 @@ export default function MangaViewer({
   const startRef = useRef<{ x: number; y: number } | null>(null)
   const panRef = useRef<{ startX: number; startY: number; tx: number; ty: number } | null>(null)
   const tapRef = useRef<{ t: number; x: number; y: number } | null>(null)
+  // 多点触摸会话标记：本次手势会话出现过 ≥2 根手指时置位，
+  // 用于拦截多点会话中热区的 click（捏合 / 多指触摸绝不再误翻页）
+  const multiTouchRef = useRef(false)
+  // 热区指针滑出轻点阈值时置位：滑动会话的热区 click 不再按点击翻页
+  const hotzoneDragRef = useRef(false)
+  // 缩放态拖动中的水平越界量（阻尼前 raw 值超出边界部分），松手时结算翻页 / 回弹
+  const edgeSettleRef = useRef<{ overX: number } | null>(null)
   // 双指捏合缩放：活动指针表 + 捏合起点
-  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  // 条目：x/y=最新位置，sx/sy=按下点，onHotzone=按下时是否落在热区
+  const pointersRef = useRef<
+    Map<number, { x: number; y: number; sx: number; sy: number; onHotzone: boolean }>
+  >(new Map())
   const pinchRef = useRef<{
     dist: number
     scale: number
@@ -409,14 +427,28 @@ export default function MangaViewer({
   }
 
   function onStagePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
-    if (selectionActive || !doubleTapZoom) return
-    // 浮层 UI（译文卡/翻译中卡/报错卡/翻页热区）：直接放行给按钮触发 click，
-    // 不进入缩放/平移/双击逻辑，避免放大状态下 stage 劫持指针导致按钮失效
-    if ((e.target as HTMLElement).closest?.('.hotzone, .result-card, .translating-card, .trans-error')) return
-    // 记录活动指针
-    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (selectionActive) return
+    const target = e.target as HTMLElement
+    // 浮层 UI（译文卡/翻译中卡/报错卡）：直接放行给按钮触发 click，不进入手势逻辑。
+    // 热区例外：热区手指也参与多点 / 滑动跟踪，仅单指轻点保留点击翻页
+    if (target.closest?.('.result-card, .translating-card, .trans-error')) return
+    // 会话标记复位（新指针按下清零，避免上一会话遗留影响本次）
+    multiTouchRef.current = false
+    hotzoneDragRef.current = false
+    edgeSettleRef.current = null
+    if (pointersRef.current.size >= 1) multiTouchRef.current = true
+    // 记录活动指针（含按下点与热区标记）
+    pointersRef.current.set(e.pointerId, {
+      x: e.clientX,
+      y: e.clientY,
+      sx: e.clientX,
+      sy: e.clientY,
+      onHotzone: !!target.closest?.('.hotzone'),
+    })
+    // 双击缩放关闭：不进入缩放 / 平移 / 捏合逻辑（滑动翻页与热区点击仍可用）
+    if (!doubleTapZoom) return
 
-    // 双指 → 开始捏合缩放（清掉双击 / 平移状态，缩放动画改为即时）
+    // 双指 → 开始捏合缩放（热区指同样参与锚点；其遗留 click 由 onClickCapture 拦截）
     if (pointersRef.current.size >= 2) {
       tapRef.current = null
       panRef.current = null
@@ -431,12 +463,15 @@ export default function MangaViewer({
       }
       setZoomTween(false)
       e.preventDefault()
-      // 两根手指都捕获，避免移出舞台时丢失
+      // 所有手指都捕获，避免移出舞台时丢失
       for (const id of pointersRef.current.keys()) {
         ;(e.currentTarget as HTMLElement).setPointerCapture(id)
       }
       return
     }
+
+    // 热区单指：不参与双击检测与平移起点（轻点走 click 翻页；滑动由 move 接管为平移 / 翻页）
+    if (pointersRef.current.get(e.pointerId)?.onHotzone) return
 
     // 双击检测：300ms 内两次相近的点击 → 切换缩放
     const now = Date.now()
@@ -462,9 +497,32 @@ export default function MangaViewer({
   }
 
   function onStagePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
-    // 更新活动指针位置
+    // 更新活动指针位置（保留按下点与热区标记）
     if (pointersRef.current.has(e.pointerId)) {
-      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      const p = pointersRef.current.get(e.pointerId)!
+      // 热区滑动判定：从按下点滑出阈值即视为滑动——放大态接入平移，且其 click 不再翻页
+      if (p.onHotzone && !hotzoneDragRef.current) {
+        if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) >= HOTZONE_DRAG_PX) {
+          hotzoneDragRef.current = true
+          if (zoomRef.current.scale > 1) {
+            setZoomTween(false)
+            ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+            panRef.current = {
+              startX: p.sx,
+              startY: p.sy,
+              tx: zoomRef.current.tx,
+              ty: zoomRef.current.ty,
+            }
+          }
+        }
+      }
+      pointersRef.current.set(e.pointerId, {
+        x: e.clientX,
+        y: e.clientY,
+        sx: p.sx,
+        sy: p.sy,
+        onHotzone: p.onHotzone,
+      })
     }
 
     // 双指捏合：以两指中心为锚点缩放（图片跟手）
@@ -505,27 +563,111 @@ export default function MangaViewer({
       }
     }
 
-    // 单指平移
+    // 单指平移（缩放态）：合法区 1:1 跟手，越界带阻尼（橡皮筋）；记录越界量供松手结算
     const p = panRef.current
     if (!p || zoomRef.current.scale <= 1) return
-    const stage = e.currentTarget.getBoundingClientRect()
-    const img = imgRef.current
-    const w = img?.clientWidth ?? stage.width
-    const h = img?.clientHeight ?? stage.height
+    const { maxX, maxY } = panBounds()
     // 注意：transform 为 scale(S) translate(tx,ty)，translate 在缩放后的坐标系，
     // 实际视觉位移 = S*tx，所以手指位移要除以 S 才能 1:1 跟手（不除会放大 S 倍，滑得飞快）
     const S = zoomRef.current.scale
-    const maxX = w * S > stage.width ? (w * S - stage.width) / (2 * S) : 0
-    const maxY = h * S > stage.height ? (h * S - stage.height) / (2 * S) : 0
-    const tx = Math.min(maxX, Math.max(-maxX, p.tx + (e.clientX - p.startX) / S))
-    const ty = Math.min(maxY, Math.max(-maxY, p.ty + (e.clientY - p.startY) / S))
+    const rawTx = p.tx + (e.clientX - p.startX) / S
+    const rawTy = p.ty + (e.clientY - p.startY) / S
+    const tx = dampAxis(rawTx, maxX)
+    const ty = dampAxis(rawTy, maxY)
+    // 越界量（raw 值超边界部分）：正=右越界 / 负=左越界
+    edgeSettleRef.current = { overX: rawTx - clampAxis(rawTx, maxX) }
     applyZoomLive({ ...zoomRef.current, tx, ty })
   }
 
+  /** 越界/滑动锚定辅助：把 v 限制在 ±limit（limit<=0 时恒为 0） */
+  function clampAxis(v: number, limit: number): number {
+    if (limit <= 0) return 0
+    return Math.max(-limit, Math.min(limit, v))
+  }
+
+  /** 越界阻尼：合法区 1:1，越界部分按 OVERDRAG_DAMP 缩放（橡皮筋手感） */
+  function dampAxis(v: number, limit: number): number {
+    if (limit <= 0) return 0
+    const c = clampAxis(v, limit)
+    return c + (v - c) * OVERDRAG_DAMP
+  }
+
+  /** 当前缩放下的平移边界 */
+  function panBounds(): { maxX: number; maxY: number } {
+    const stage = stageRef.current
+    const img = imgRef.current
+    const w = img?.clientWidth ?? 0
+    const h = img?.clientHeight ?? 0
+    const sw = stage?.clientWidth ?? 0
+    const sh = stage?.clientHeight ?? 0
+    const S = zoomRef.current.scale
+    return {
+      maxX: w * S > sw ? (w * S - sw) / (2 * S) : 0,
+      maxY: h * S > sh ? (h * S - sh) / (2 * S) : 0,
+    }
+  }
+
+  /**
+   * 松手结算：
+   * - 多点会话（捏合 / 多指）= 不结算任何翻页
+   * - 缩放态：水平越界 ≥ EDGE_TURN_PX → 翻页；未达阈值 → 回弹到边界
+   * - 未缩放：水平主导滑动 ≥ SWIPE_MIN_PX → 按方向翻页
+   * 返回值：'turn'=已翻页（zoom 将由 src 变化 effect 重置，勿再同步）；
+   *        'settled'=已回弹（settle 内已 setZoom，勿再同步）；'none'=无操作
+   */
+  function settleGesture(
+    e: ReactPointerEvent<HTMLDivElement>,
+    ptr: { sx: number; sy: number } | undefined,
+  ): 'turn' | 'settled' | 'none' {
+    if (!ptr) return 'none'
+    // 多点会话：不结算滑动 / 越界（捏合已处理，热区 click 也已被拦截）
+    if (multiTouchRef.current) return 'none'
+    const { scale, tx, ty } = zoomRef.current
+    if (scale > 1) {
+      const overX = edgeSettleRef.current?.overX ?? 0
+      // 向左拖过界 → 下一页；向右拖过界 → 上一页（与滑动翻页方向一致）
+      if (overX <= -EDGE_TURN_PX) {
+        onNext()
+        return 'turn'
+      }
+      if (overX >= EDGE_TURN_PX) {
+        onPrev()
+        return 'turn'
+      }
+      // 轻微越界：回弹到边界（带 150ms 过渡）
+      if (overX !== 0) {
+        const { maxX, maxY } = panBounds()
+        const ntx = clampAxis(tx, maxX)
+        const nty = clampAxis(ty, maxY)
+        if (ntx !== tx || nty !== ty) {
+          setZoomBounce(true)
+          setZoom({ scale, tx: ntx, ty: nty })
+          return 'settled'
+        }
+      }
+      return 'none'
+    }
+    // 未缩放：滑动翻页（左滑=下一页 / 右滑=上一页），仅水平主导，防垂直滑动误翻
+    const dx = e.clientX - ptr.sx
+    const dy = e.clientY - ptr.sy
+    if (Math.hypot(dx, dy) >= SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) onNext()
+      else onPrev()
+      return 'turn'
+    }
+    return 'none'
+  }
+
   function onStagePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
-    // 手势结束：把最后一次实时缩放同步回 React 状态（transform 一致，无跳变）
-    const z = zoomRef.current
-    if (z.scale !== zoom.scale || z.tx !== zoom.tx || z.ty !== zoom.ty) setZoom({ ...z })
+    const ptr = pointersRef.current.get(e.pointerId)
+    // 松手结算（先于状态清理）：翻页 / 回弹 / 无操作
+    const settled = settleGesture(e, ptr)
+    // 手势结束：把最后一次实时缩放同步回 React 状态（transform 一致，无跳变）。
+    // 已翻页 / 已回弹时跳过：翻页由 src 变化 effect 重置，回弹已在 settle 内 setZoom
+    if (settled === 'none') {
+      const z = zoomRef.current
+      if (z.scale !== zoom.scale || z.tx !== zoom.tx || z.ty !== zoom.ty) setZoom({ ...z })
+    }
     pointersRef.current.delete(e.pointerId)
     // 少于两指 → 结束捏合
     if (pointersRef.current.size < 2) pinchRef.current = null
@@ -553,6 +695,17 @@ export default function MangaViewer({
         onPointerMove={onStagePointerMove}
         onPointerUp={onStagePointerUp}
         onPointerCancel={onStagePointerUp}
+        // 非轻点会话（多点触摸 / 热区滑动）遗留的热区 click：
+        // 在 capture 阶段拦截，避免捏合 / 滑动 / 拖拽结束后误翻页
+        onClickCapture={(e) => {
+          if (
+            (e.target as HTMLElement).closest?.('.hotzone') &&
+            (multiTouchRef.current || hotzoneDragRef.current)
+          ) {
+            e.preventDefault()
+            e.stopPropagation()
+          }
+        }}
       >
         <div ref={stageInnerRef} className="stage-inner">
           {/* 翻页动画：推页式，旧页同向滑出、新页相对滑入（与阅读层 push/pop 同款滑动感） */}
@@ -587,9 +740,14 @@ export default function MangaViewer({
               ref={imgRef}
               src={src}
               alt="漫画页"
-              className={zoomTween ? 'zoom-anim' : undefined}
+              className={
+                zoomTween ? 'zoom-anim' : zoomBounce ? 'zoom-bounce' : undefined
+              }
               onTransitionEnd={(e) => {
-                if (e.propertyName === 'transform' && zoomTween) setZoomTween(false)
+                if (e.propertyName === 'transform') {
+                  if (zoomTween) setZoomTween(false)
+                  if (zoomBounce) setZoomBounce(false)
+                }
               }}
               style={{
                 transform: `scale(${zoom.scale}) translate(${zoom.tx}px, ${zoom.ty}px)`,
